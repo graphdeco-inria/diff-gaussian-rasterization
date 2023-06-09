@@ -2,7 +2,7 @@ from typing import NamedTuple
 import torch.nn as nn
 import torch
 import utils.profiling_utils as profiling_utils
-from diff_rasterizationCUDA import _C
+from diff_gaussian_rasterization import _C
 
 def rasterize_gaussians(
     means3D,

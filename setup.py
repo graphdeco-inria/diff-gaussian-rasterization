@@ -4,10 +4,11 @@ import os
 os.path.dirname(os.path.abspath(__file__))
 
 setup(
-    name="diff_rasterizationCUDA",
+    name="diff_gaussian_rasterization",
+    packages=['diff_gaussian_rasterization'],
     ext_modules=[
         CUDAExtension(
-            name="diff_rasterizationCUDA._C",
+            name="diff_gaussian_rasterization._C",
             sources=[
             "rasterize_points.cu", 
             "cuda_rasterizer/rasterizer_impl.cu",
