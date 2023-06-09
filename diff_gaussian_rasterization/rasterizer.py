@@ -1,8 +1,7 @@
 from typing import NamedTuple
 import torch.nn as nn
 import torch
-import utils.profiling_utils as profiling_utils
-from diff_gaussian_rasterization import _C
+from . import _C
 
 def rasterize_gaussians(
     means3D,
@@ -97,12 +96,8 @@ class _RasterizeGaussians(torch.autograd.Function):
                 raster_settings.sh_degree, 
                 raster_settings.campos)
 
-        back_rng = profiling_utils.start("rasterize", "yellow", "render" )
-
         # Compute gradients for relevant tensors by invoking backward method
         grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)        
-
-        profiling_utils.stop(back_rng)
 
         grads = (
             grad_means3D,
