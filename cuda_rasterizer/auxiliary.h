@@ -26,7 +26,7 @@ __device__ constexpr float SH_C3[] = {
 	-0.5900435899266435f
 };
 
-__forceinline __host__ __device__ float ndc2Pix(float v, int S)
+__forceinline __device__ float ndc2Pix(float v, int S)
 {
 	return ((v + 1.0) * S - 1.0) * 0.5;
 }
