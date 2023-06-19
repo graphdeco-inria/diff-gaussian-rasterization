@@ -11,10 +11,25 @@
 #include <memory>
 #include "cuda_rasterizer/config.h"
 #include "cuda_rasterizer/rasterizer.h"
+#include "rasterize_points.h"
 #include <fstream>
 #include <string>
 
 static std::unique_ptr<CudaRasterizer::Rasterizer> cudaRenderer = nullptr;
+
+void* createRasterizerState()
+{
+  if (cudaRenderer == nullptr)
+  {
+	cudaRenderer = std::unique_ptr<CudaRasterizer::Rasterizer>(CudaRasterizer::Rasterizer::make());
+  }
+  return (void*)cudaRenderer->createInternalState();
+}
+
+void deleteRasterizerState(void* state)
+{
+	cudaRenderer->killInternalState((CudaRasterizer::InternalState*)state);
+}
 
 std::tuple<torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
@@ -35,7 +50,8 @@ RasterizeGaussiansCUDA(
 	const torch::Tensor& sh,
 	const int degree,
 	const torch::Tensor& campos,
-	const bool prefiltered)
+	const bool prefiltered,
+	void* internalState) 
 {
 
   if (means3D.ndimension() != 2 || means3D.size(1) != 3) {
@@ -83,14 +99,16 @@ RasterizeGaussiansCUDA(
 		tan_fovx,
 		tan_fovy,
 		prefiltered,
-		out_color.contiguous().data<float>(),
-		radii.contiguous().data<int>());
+		radii.contiguous().data<int>(),
+		(CudaRasterizer::InternalState*)internalState,
+		out_color.contiguous().data<float>());
   }
   return std::make_tuple(out_color, radii);
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
  RasterizeGaussiansBackwardCUDA(
+ 	const void* internalState,
  	const torch::Tensor& background,
 	const torch::Tensor& means3D,
 	const torch::Tensor& radii,
@@ -130,7 +148,10 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
   
   if(P != 0)
   {  
-	  cudaRenderer->backward(P, degree, M,
+	  cudaRenderer->backward(
+	  radii.contiguous().data<int>(),
+	  (CudaRasterizer::InternalState*)internalState,
+	  P, degree, M,
 	  background.contiguous().data<float>(),
 	  W, H, 
 	  means3D.contiguous().data<float>(),
@@ -145,7 +166,6 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	  campos.contiguous().data<float>(),
 	  tan_fovx,
 	  tan_fovy,
-	  radii.contiguous().data<int>(),
 	  dL_dout_color.contiguous().data<float>(),
 	  dL_dmeans2D.contiguous().data<float>(),
 	  dL_dconic.contiguous().data<float>(),  
