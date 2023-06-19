@@ -134,7 +134,6 @@ CudaRasterizer::RasterizerImpl::RasterizerImpl(int resizeMultiplier)
 // Instantiate rasterizer
 CudaRasterizer::Rasterizer* CudaRasterizer::Rasterizer::make(int resizeMultiplier)
 {
-	printf("Version 17\n");
 	return new CudaRasterizer::RasterizerImpl(resizeMultiplier);
 }
 
