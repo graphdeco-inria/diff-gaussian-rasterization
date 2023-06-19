@@ -13,6 +13,7 @@ def rasterize_gaussians(
     rotations,
     cov3Ds_precomp,
     raster_settings,
+    rasterizer_state
 ):
     return _RasterizeGaussians.apply(
         means3D,
@@ -24,6 +25,7 @@ def rasterize_gaussians(
         rotations,
         cov3Ds_precomp,
         raster_settings,
+        rasterizer_state
     )
 
 class _RasterizeGaussians(torch.autograd.Function):
@@ -39,9 +41,8 @@ class _RasterizeGaussians(torch.autograd.Function):
         rotations,
         cov3Ds_precomp,
         raster_settings,
+        rasterizer_state
     ):
-
-        rasterizer_state = _C.create_rasterizer_state()
 
         # Restructure arguments the way that the C++ lib expects them
         args = (
@@ -115,9 +116,8 @@ class _RasterizeGaussians(torch.autograd.Function):
             grad_rotations,
             grad_cov3Ds_precomp,
             None,
+            None,
         )
-
-        _C.delete_rasterizer_state(rasterizer_state)
 
         return grads
 
@@ -134,10 +134,17 @@ class GaussianRasterizationSettings(NamedTuple):
     campos : torch.Tensor
     prefiltered : bool
 
+def createRasterizerState():
+    return _C.create_rasterizer_state()
+
+def deleteRasterizerState(state):
+    return _C.delete_rasterize_state(state)
+
 class GaussianRasterizer(nn.Module):
-    def __init__(self, raster_settings):
+    def __init__(self, raster_settings, rasterizer_state):
         super().__init__()
         self.raster_settings = raster_settings
+        self.rasterizer_state = rasterizer_state
 
     def markVisible(self, positions):
         # Mark visible points (based on frustum culling for camera) with a boolean 
@@ -151,8 +158,8 @@ class GaussianRasterizer(nn.Module):
         return visible
 
     def forward(self, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None):
-        
         raster_settings = self.raster_settings
+        rasterize_state = self.rasterizer_state
 
         if (shs is None and colors_precomp is None) or (shs is not None and colors_precomp is not None):
             raise Exception('Please provide excatly one of either SHs or precomputed colors!')
@@ -183,5 +190,6 @@ class GaussianRasterizer(nn.Module):
             rotations,
             cov3D_precomp,
             raster_settings, 
+            rasterize_state
         )
 
