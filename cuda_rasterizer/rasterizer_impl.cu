@@ -137,6 +137,11 @@ CudaRasterizer::Rasterizer* CudaRasterizer::Rasterizer::make(int resizeMultiplie
 	return new CudaRasterizer::RasterizerImpl(resizeMultiplier);
 }
 
+void CudaRasterizer::Rasterizer::kill(Rasterizer* rasterizer)
+{
+	delete rasterizer;
+}
+
 // Mark Gaussians as visible/invisible, based on view frustum testing
 void CudaRasterizer::RasterizerImpl::markVisible(
 		int P,

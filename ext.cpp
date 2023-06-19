@@ -8,4 +8,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
   m.def("mark_visible", &markVisible);
   m.def("create_rasterizer_state", &createRasterizerState);
   m.def("delete_rasterizer_state", &deleteRasterizerState);
+  m.def("create_rasterizer", &createRasterizer);
+  m.def("delete_rasterizer", &deleteRasterizer);
 }

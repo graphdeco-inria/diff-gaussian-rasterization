@@ -74,6 +74,8 @@ namespace CudaRasterizer
 		virtual ~Rasterizer() {};
 
 		static Rasterizer* make(int resizeMultipliyer = 2);
+
+		static void kill(Rasterizer* rasterizer);
 	};
 };
 

@@ -8,6 +8,7 @@
 	
 std::tuple<torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
+	void* rasterizer,
 	const torch::Tensor& background,
 	const torch::Tensor& means3D,
     const torch::Tensor& colors,
@@ -30,6 +31,7 @@ RasterizeGaussiansCUDA(
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
  RasterizeGaussiansBackwardCUDA(
+	void* rasterizer,
  	const void* internalState,
  	const torch::Tensor& background,
 	const torch::Tensor& means3D,
@@ -48,11 +50,16 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	const int degree,
 	const torch::Tensor& campos);
 		
-void* createRasterizerState();
+void* createRasterizerState(void* rasterizer);
 
-void deleteRasterizerState(void* state);
+void deleteRasterizerState(void* rasterizer, void* state);
+
+void* createRasterizer();
+
+void deleteRasterizer(void* rasterizer);
 		
 torch::Tensor markVisible(
+		void* rasterizer,
 		torch::Tensor& means3D,
 		torch::Tensor& viewmatrix,
 		torch::Tensor& projmatrix);
