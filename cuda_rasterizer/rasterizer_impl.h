@@ -4,101 +4,60 @@
 #include <vector>
 #include "rasterizer.h"
 #include <cuda_runtime_api.h>
-#include <thrust/device_vector.h>
 
 namespace CudaRasterizer
 {
-	class RasterizerImpl : public Rasterizer
+	template <typename T>
+	static void obtain(char*& chunk, T*& ptr, std::size_t count, std::size_t alignment)
 	{
-	private:
-		int maxP = 0;
-		int maxPixels = 0;
-		int resizeMultiplier = 2;
+		std::size_t offset = (reinterpret_cast<std::uintptr_t>(chunk) + alignment - 1) & ~(alignment - 1);
+		ptr = reinterpret_cast<T*>(offset);
+		chunk = reinterpret_cast<char*>(ptr + count);
+	}
 
-		// Initial aux structs
-		size_t sorting_size;
-		size_t list_sorting_size;
+	struct GeometryState
+	{
 		size_t scan_size;
-		thrust::device_vector<float> depths;
-		thrust::device_vector<uint32_t> tiles_touched;
-		thrust::device_vector<uint32_t> point_offsets;
-		thrust::device_vector<uint64_t> point_list_keys_unsorted;
-		thrust::device_vector<uint64_t> point_list_keys;
-		thrust::device_vector<uint32_t> point_list_unsorted;
-		thrust::device_vector<uint32_t> point_list;
-		thrust::device_vector<char> scanning_space;
-		thrust::device_vector<char> list_sorting_space;
-		thrust::device_vector<bool> clamped;
-		thrust::device_vector<int> internal_radii;
+		float* depths;
+		char* scanning_space;
+		bool* clamped;
+		int* internal_radii;
+		float2* means2D;
+		float* cov3D;
+		float4* conic_opacity;
+		float* rgb;
+		uint32_t* point_offsets;
+		uint32_t* tiles_touched;
 
-		// Internal state kept across forward / backward
-		thrust::device_vector<uint2> ranges;
-		thrust::device_vector<uint32_t> n_contrib;
-		thrust::device_vector<float> accum_alpha;
-
-		thrust::device_vector<float2> means2D;
-		thrust::device_vector<float> cov3D;
-		thrust::device_vector<float4> conic_opacity;
-		thrust::device_vector<float> rgb;
-
-	public:
-
-		virtual void markVisible(
-			int P, 
-			float* means3D,
-			float* viewmatrix,
-			float* projmatrix,
-			bool* present) override;
-
-		virtual void forward(
-			const int P, int D, int M,
-			const float* background,
-			const int width, int height,
-			const float* means3D,
-			const float* shs,
-			const float* colors_precomp,
-			const float* opacities,
-			const float* scales,
-			const float scale_modifier,
-			const float* rotations,
-			const float* cov3D_precomp,
-			const float* viewmatrix,
-			const float* projmatrix,
-			const float* cam_pos,
-			const float tan_fovx, float tan_fovy,
-			const bool prefiltered,
-			float* out_color,
-			int* radii) override;
-
-		virtual void backward(
-			const int P, int D, int M,
-			const float* background,
-			const int width, int height,
-			const float* means3D,
-			const float* shs,
-			const float* colors_precomp,
-			const float* scales,
-			const float scale_modifier,
-			const float* rotations,
-			const float* cov3D_precomp,
-			const float* viewmatrix,
-			const float* projmatrix,
-			const float* campos,
-			const float tan_fovx, float tan_fovy,
-			const int* radii,
-			const float* dL_dpix,
-			float* dL_dmean2D,
-			float* dL_dconic,
-			float* dL_dopacity,
-			float* dL_dcolor,
-			float* dL_dmean3D,
-			float* dL_dcov3D,
-			float* dL_dsh,
-			float* dL_dscale,
-			float* dL_drot) override;
-
-		RasterizerImpl(int resizeMultiplier);
-
-		virtual ~RasterizerImpl() override;
+		static GeometryState fromChunk(char*& chunk, int P);
 	};
+
+	struct ImageState
+	{
+		uint2* ranges;
+		uint32_t* n_contrib;
+		float* accum_alpha;
+
+		static ImageState fromChunk(char*& chunk, int N);
+	};
+
+	struct BinningState
+	{
+		size_t sorting_size;
+		uint64_t* point_list_keys_unsorted;
+		uint64_t* point_list_keys;
+		uint32_t* point_list_unsorted;
+		uint32_t* point_list;
+		char* list_sorting_space;
+
+		static BinningState fromChunk(char*& chunk, int P);
+	};
+
+	template<typename T> 
+	int required(int P)
+	{
+		char* size = nullptr;
+		T::fromChunk(size, P);
+		return ((int)size) + 128;
+	}
 };
