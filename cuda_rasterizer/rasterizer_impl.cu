@@ -205,8 +205,7 @@ int CudaRasterizer::Rasterizer::forward(
 	const float tan_fovx, float tan_fovy,
 	const bool prefiltered,
 	float* out_color,
-	int* radii,
-	const float* fill_background)
+	int* radii)
 {
 	const float focal_y = height / (2.0f * tan_fovy);
 	const float focal_x = width / (2.0f * tan_fovx);
@@ -216,10 +215,9 @@ int CudaRasterizer::Rasterizer::forward(
 	GeometryState geomState = GeometryState::fromChunk(chunkptr, P);
 
 	if (radii == nullptr)
+	{
 		radii = geomState.internal_radii;
-
-	if (fill_background == nullptr)
-		fill_background = background;
+	}
 
 	dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
 	dim3 block(BLOCK_X, BLOCK_Y, 1);
@@ -320,7 +318,6 @@ int CudaRasterizer::Rasterizer::forward(
 		imgState.accum_alpha,
 		imgState.n_contrib,
 		background,
-		fill_background,
 		out_color);
 
 	return num_rendered;
@@ -363,7 +360,9 @@ void CudaRasterizer::Rasterizer::backward(
 	ImageState imgState = ImageState::fromChunk(img_buffer, width * height);
 
 	if (radii == nullptr)
+	{
 		radii = geomState.internal_radii;
+	}
 
 	const float focal_y = height / (2.0f * tan_fovy);
 	const float focal_x = width / (2.0f * tan_fovx);
