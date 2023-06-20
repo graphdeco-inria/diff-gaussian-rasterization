@@ -11,33 +11,13 @@
 #include <memory>
 #include "cuda_rasterizer/config.h"
 #include "cuda_rasterizer/rasterizer.h"
-#include "rasterize_points.h"
 #include <fstream>
 #include <string>
 
-void* createRasterizer()
-{
-	return (void*)CudaRasterizer::Rasterizer::make();
-}
-
-void deleteRasterizer(void* rasterizer)
-{
-	CudaRasterizer::Rasterizer::kill((CudaRasterizer::Rasterizer*)rasterizer);
-}
-
-void* createRasterizerState(void* rasterizer)
-{
-	return (void*)((CudaRasterizer::Rasterizer*)rasterizer)->createInternalState();
-}
-
-void deleteRasterizerState(void* rasterizer, void* state)
-{
-	((CudaRasterizer::Rasterizer*)rasterizer)->killInternalState((CudaRasterizer::InternalState*)state);
-}
+static std::unique_ptr<CudaRasterizer::Rasterizer> cudaRenderer = nullptr;
 
 std::tuple<torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
-	void* rasterizer,
 	const torch::Tensor& background,
 	const torch::Tensor& means3D,
     const torch::Tensor& colors,
@@ -55,12 +35,16 @@ RasterizeGaussiansCUDA(
 	const torch::Tensor& sh,
 	const int degree,
 	const torch::Tensor& campos,
-	const bool prefiltered,
-	void* internalState) 
+	const bool prefiltered)
 {
 
   if (means3D.ndimension() != 2 || means3D.size(1) != 3) {
     AT_ERROR("means3D must have dimensions (num_points, 3)");
+  }
+  
+  if (cudaRenderer == nullptr)
+  {
+	cudaRenderer = std::unique_ptr<CudaRasterizer::Rasterizer>(CudaRasterizer::Rasterizer::make());
   }
   
   const int P = means3D.size(0);
@@ -82,7 +66,7 @@ RasterizeGaussiansCUDA(
 		M = sh.size(1);
       }
 
-	  ((CudaRasterizer::Rasterizer*)rasterizer)->forward(P, degree, M,
+	  cudaRenderer->forward(P, degree, M,
 		background.contiguous().data<float>(),
 		W, H,
 		means3D.contiguous().data<float>(),
@@ -99,17 +83,14 @@ RasterizeGaussiansCUDA(
 		tan_fovx,
 		tan_fovy,
 		prefiltered,
-		radii.contiguous().data<int>(),
-		(CudaRasterizer::InternalState*)internalState,
-		out_color.contiguous().data<float>());
+		out_color.contiguous().data<float>(),
+		radii.contiguous().data<int>());
   }
   return std::make_tuple(out_color, radii);
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
  RasterizeGaussiansBackwardCUDA(
-	void* rasterizer,
- 	const void* internalState,
  	const torch::Tensor& background,
 	const torch::Tensor& means3D,
 	const torch::Tensor& radii,
@@ -149,10 +130,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
   
   if(P != 0)
   {  
-	  ((CudaRasterizer::Rasterizer*)rasterizer)->backward(
-	  radii.contiguous().data<int>(),
-	  (CudaRasterizer::InternalState*)internalState,
-	  P, degree, M,
+	  cudaRenderer->backward(P, degree, M,
 	  background.contiguous().data<float>(),
 	  W, H, 
 	  means3D.contiguous().data<float>(),
@@ -167,6 +145,7 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	  campos.contiguous().data<float>(),
 	  tan_fovx,
 	  tan_fovy,
+	  radii.contiguous().data<int>(),
 	  dL_dout_color.contiguous().data<float>(),
 	  dL_dmeans2D.contiguous().data<float>(),
 	  dL_dconic.contiguous().data<float>(),  
@@ -183,11 +162,14 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 }
 
 torch::Tensor markVisible(
-		void* rasterizer,
 		torch::Tensor& means3D,
 		torch::Tensor& viewmatrix,
 		torch::Tensor& projmatrix)
 { 
+  if (cudaRenderer == nullptr)
+  {
+	cudaRenderer = std::unique_ptr<CudaRasterizer::Rasterizer>(CudaRasterizer::Rasterizer::make());
+  }
  
   const int P = means3D.size(0);
   
@@ -195,7 +177,7 @@ torch::Tensor markVisible(
  
   if(P != 0)
   {
-	((CudaRasterizer::Rasterizer*)rasterizer)->markVisible(P,
+	cudaRenderer->markVisible(P,
 		means3D.contiguous().data<float>(),
 		viewmatrix.contiguous().data<float>(),
 		projmatrix.contiguous().data<float>(),

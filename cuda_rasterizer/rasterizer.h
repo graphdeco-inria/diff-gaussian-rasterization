@@ -5,15 +5,9 @@
 
 namespace CudaRasterizer
 {
-	struct InternalState;
-
 	class Rasterizer
 	{
 	public:
-
-		virtual InternalState* createInternalState() = 0;
-
-		virtual void killInternalState(InternalState*) = 0;
 
 		virtual void markVisible(
 			int P,
@@ -39,13 +33,10 @@ namespace CudaRasterizer
 			const float* cam_pos,
 			const float tan_fovx, float tan_fovy,
 			const bool prefiltered,
-			int* radii,
-			InternalState* state,
-			float* out_color) = 0;
+			float* out_color,
+			int* radii = nullptr) = 0;
 
 		virtual void backward(
-			const int* radii,
-			const InternalState* state,
 			const int P, int D, int M,
 			const float* background,
 			const int width, int height,
@@ -56,10 +47,11 @@ namespace CudaRasterizer
 			const float scale_modifier,
 			const float* rotations,
 			const float* cov3D_precomp,
-			const float* viewmatrix,
+			const float* viewmatrix, 
 			const float* projmatrix,
 			const float* campos,
 			const float tan_fovx, float tan_fovy,
+			const int* radii,
 			const float* dL_dpix,
 			float* dL_dmean2D,
 			float* dL_dconic,
@@ -74,8 +66,6 @@ namespace CudaRasterizer
 		virtual ~Rasterizer() {};
 
 		static Rasterizer* make(int resizeMultipliyer = 2);
-
-		static void kill(Rasterizer* rasterizer);
 	};
 };
 

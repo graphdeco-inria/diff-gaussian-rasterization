@@ -8,52 +8,40 @@
 
 namespace CudaRasterizer
 {
-	//// Internal state kept across forward / backward
-	struct InternalState
-	{
-		int maxP = 0;
-		int maxPixels = 0;
-
-		thrust::device_vector<uint2> ranges;
-		thrust::device_vector<float2> means2D;
-		thrust::device_vector<float4> conic_opacity;
-		thrust::device_vector<float> accum_alpha;
-		thrust::device_vector<uint32_t> n_contrib;
-		thrust::device_vector<float> cov3D;
-		thrust::device_vector<bool> clamped;
-		thrust::device_vector<float> rgb;
-		thrust::device_vector<float> depths;
-
-		thrust::device_vector<uint32_t> point_offsets;
-		thrust::device_vector<uint32_t> tiles_touched;
-
-		thrust::device_vector<char> scanning_space;
-		thrust::device_vector<uint32_t> point_list;
-	};
-
-	// Auxiliary buffer spaces
-	thrust::device_vector<uint64_t> point_list_keys_unsorted;
-	thrust::device_vector<uint64_t> point_list_keys;
-	thrust::device_vector<uint32_t> point_list_unsorted;
-	thrust::device_vector<char> list_sorting_space;
-
 	class RasterizerImpl : public Rasterizer
 	{
 	private:
-		
+		int maxP = 0;
+		int maxPixels = 0;
 		int resizeMultiplier = 2;
 
+		// Initial aux structs
+		size_t sorting_size;
+		size_t list_sorting_size;
+		size_t scan_size;
+		thrust::device_vector<float> depths;
+		thrust::device_vector<uint32_t> tiles_touched;
+		thrust::device_vector<uint32_t> point_offsets;
+		thrust::device_vector<uint64_t> point_list_keys_unsorted;
+		thrust::device_vector<uint64_t> point_list_keys;
+		thrust::device_vector<uint32_t> point_list_unsorted;
+		thrust::device_vector<uint32_t> point_list;
+		thrust::device_vector<char> scanning_space;
+		thrust::device_vector<char> list_sorting_space;
+		thrust::device_vector<bool> clamped;
+		thrust::device_vector<int> internal_radii;
+
+		// Internal state kept across forward / backward
+		thrust::device_vector<uint2> ranges;
+		thrust::device_vector<uint32_t> n_contrib;
+		thrust::device_vector<float> accum_alpha;
+
+		thrust::device_vector<float2> means2D;
+		thrust::device_vector<float> cov3D;
+		thrust::device_vector<float4> conic_opacity;
+		thrust::device_vector<float> rgb;
+
 	public:
-
-		virtual InternalState* createInternalState() override
-		{
-			return new InternalState();
-		}
-
-		virtual void killInternalState(InternalState* is) override
-		{
-			delete is;
-		}
 
 		virtual void markVisible(
 			int P, 
@@ -79,13 +67,10 @@ namespace CudaRasterizer
 			const float* cam_pos,
 			const float tan_fovx, float tan_fovy,
 			const bool prefiltered,
-			int* radii,
-			InternalState* state,
-			float* out_color) override;
+			float* out_color,
+			int* radii) override;
 
 		virtual void backward(
-			const int* radii,
-			const InternalState* fixedState,
 			const int P, int D, int M,
 			const float* background,
 			const int width, int height,
@@ -100,6 +85,7 @@ namespace CudaRasterizer
 			const float* projmatrix,
 			const float* campos,
 			const float tan_fovx, float tan_fovy,
+			const int* radii,
 			const float* dL_dpix,
 			float* dL_dmean2D,
 			float* dL_dconic,
