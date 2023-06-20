@@ -15,9 +15,9 @@
 #include <string>
 #include <functional>
 
-std::function<char*(int N)> resizeFunctional(torch::Tensor& t) {
-    auto lambda = [&t](int N) {
-        t.resize_({N});
+std::function<char*(size_t N)> resizeFunctional(torch::Tensor& t) {
+    auto lambda = [&t](size_t N) {
+        t.resize_({(long long)N});
 		return reinterpret_cast<char*>(t.contiguous().data_ptr());
     };
     return lambda;
@@ -64,9 +64,9 @@ RasterizeGaussiansCUDA(
   torch::Tensor geomBuffer = torch::empty({0}, options.device(device));
   torch::Tensor binningBuffer = torch::empty({0}, options.device(device));
   torch::Tensor imgBuffer = torch::empty({0}, options.device(device));
-  std::function<char*(int)> geomFunc = resizeFunctional(geomBuffer);
-  std::function<char*(int)> binningFunc = resizeFunctional(binningBuffer);
-  std::function<char*(int)> imgFunc = resizeFunctional(imgBuffer);
+  std::function<char*(size_t)> geomFunc = resizeFunctional(geomBuffer);
+  std::function<char*(size_t)> binningFunc = resizeFunctional(binningBuffer);
+  std::function<char*(size_t)> imgFunc = resizeFunctional(imgBuffer);
   
   int rendered = 0;
   if(P != 0)
