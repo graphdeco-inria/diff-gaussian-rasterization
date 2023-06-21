@@ -8,16 +8,16 @@
 #define NUM_WARPS (BLOCK_SIZE/32)
 
 // Spherical harmonics coefficients
-__device__ constexpr float SH_C0 = 0.28209479177387814f;
-__device__ constexpr float SH_C1 = 0.4886025119029199f;
-__device__ constexpr float SH_C2[] = {
+__device__ const float SH_C0 = 0.28209479177387814f;
+__device__ const float SH_C1 = 0.4886025119029199f;
+__device__ const float SH_C2[] = {
 	1.0925484305920792f,
 	-1.0925484305920792f,
 	0.31539156525252005f,
 	-1.0925484305920792f,
 	0.5462742152960396f
 };
-__device__ constexpr float SH_C3[] = {
+__device__ const float SH_C3[] = {
 	-0.5900435899266435f,
 	2.890611442640554f,
 	-0.4570457994644658f,
