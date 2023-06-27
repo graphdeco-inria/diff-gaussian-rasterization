@@ -1,5 +1,3 @@
-// Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
-
 #include <math.h>
 #include <torch/extension.h>
 #include <cstdio>
