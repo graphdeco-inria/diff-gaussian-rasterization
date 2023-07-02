@@ -47,14 +47,13 @@ RasterizeGaussiansCUDA(
   }
   
   const int P = means3D.size(0);
-  const int N = 1; 					// batch size hard-coded
   const int H = image_height;
   const int W = image_width;
 
   auto int_opts = means3D.options().dtype(torch::kInt32);
   auto float_opts = means3D.options().dtype(torch::kFloat32);
 
-  torch::Tensor out_color = torch::full({N, NUM_CHANNELS, H, W}, 0.0, float_opts);
+  torch::Tensor out_color = torch::full({NUM_CHANNELS, H, W}, 0.0, float_opts);
   torch::Tensor radii = torch::full({P}, 0, means3D.options().dtype(torch::kInt32));
   
   torch::Device device(torch::kCUDA);
@@ -126,8 +125,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	const torch::Tensor& imageBuffer) 
 {
   const int P = means3D.size(0);
-  const int H = dL_dout_color.size(2);
-  const int W = dL_dout_color.size(3);
+  const int H = dL_dout_color.size(1);
+  const int W = dL_dout_color.size(2);
   
   int M = 0;
   if(sh.size(0) != 0)

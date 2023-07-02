@@ -134,8 +134,8 @@ __global__ void computeCov2DCUDA(int P,
 	const float3* means,
 	const int* radii,
 	const float* cov3Ds,
-	float h_x,
-	float h_y,
+	const float h_x, float h_y,
+	const float tan_fovx, float tan_fovy,
 	const float* view_matrix,
 	const float* dL_dconics,
 	float3* dL_dmeans,
@@ -153,11 +153,20 @@ __global__ void computeCov2DCUDA(int P,
 	float3 mean = means[idx];
 	float3 dL_dconic = { dL_dconics[4 * idx], dL_dconics[4 * idx + 1], dL_dconics[4 * idx + 3] };
 	float3 t = transformPoint4x3(mean, view_matrix);
-	float t_inv_norm = 1.f / sqrt(t.x * t.x + t.y * t.y + t.z * t.z);
+	
+	const float limx = 1.3f * tan_fovx;
+	const float limy = 1.3f * tan_fovy;
+	const float txtz = t.x / t.z;
+	const float tytz = t.y / t.z;
+	t.x = min(limx, max(-limx, txtz)) * t.z;
+	t.y = min(limy, max(-limy, tytz)) * t.z;
+	
+	const float x_grad_mul = txtz < -limx || txtz > limx ? 0 : 1;
+	const float y_grad_mul = tytz < -limy || tytz > limy ? 0 : 1;
 
 	glm::mat3 J = glm::mat3(h_x / t.z, 0.0f, -(h_x * t.x) / (t.z * t.z),
 		0.0f, h_y / t.z, -(h_y * t.y) / (t.z * t.z),
-		t.x * t_inv_norm, t.y * t_inv_norm, t.z * t_inv_norm);
+		0, 0, 0);
 
 	glm::mat3 W = glm::mat3(
 		view_matrix[0], view_matrix[4], view_matrix[8],
@@ -239,8 +248,8 @@ __global__ void computeCov2DCUDA(int P,
 	float tz3 = tz2 * tz;
 
 	// Gradients of loss w.r.t. transformed Gaussian mean t
-	float dL_dtx = -h_x * tz2 * dL_dJ02;
-	float dL_dty = -h_y * tz2 * dL_dJ12;
+	float dL_dtx = x_grad_mul * -h_x * tz2 * dL_dJ02;
+	float dL_dty = y_grad_mul * -h_y * tz2 * dL_dJ12;
 	float dL_dtz = -h_x * tz2 * dL_dJ00 - h_y * tz2 * dL_dJ11 + (2 * h_x * t.x) * tz3 * dL_dJ02 + (2 * h_y * t.y) * tz3 * dL_dJ12;
 
 	// Account for transformation of mean to t
@@ -258,7 +267,7 @@ __global__ void computeCov2DCUDA(int P,
 __device__ void computeCov3D(int idx, const glm::vec3 scale, float mod, const glm::vec4 rot, const float* dL_dcov3Ds, glm::vec3* dL_dscales, glm::vec4* dL_drots)
 {
 	// Recompute (intermediate) results for the 3D covariance computation.
-	glm::vec4 q = rot / glm::length(rot);
+	glm::vec4 q = rot;// / glm::length(rot);
 	float r = q.x;
 	float x = q.y;
 	float y = q.z;
@@ -272,7 +281,7 @@ __device__ void computeCov3D(int idx, const glm::vec3 scale, float mod, const gl
 
 	glm::mat3 S = glm::mat3(1.0f);
 
-	glm::vec3 s = mod * exp(scale);
+	glm::vec3 s = mod * scale;
 	S[0][0] = s.x;
 	S[1][1] = s.y;
 	S[2][2] = s.z;
@@ -298,15 +307,15 @@ __device__ void computeCov3D(int idx, const glm::vec3 scale, float mod, const gl
 	glm::mat3 Rt = glm::transpose(R);
 	glm::mat3 dL_dMt = glm::transpose(dL_dM);
 
-	dL_dMt[0] *= s.x;
-	dL_dMt[1] *= s.y;
-	dL_dMt[2] *= s.z;
-
 	// Gradients of loss w.r.t. scale
 	glm::vec3* dL_dscale = dL_dscales + idx;
 	dL_dscale->x = glm::dot(Rt[0], dL_dMt[0]);
 	dL_dscale->y = glm::dot(Rt[1], dL_dMt[1]);
 	dL_dscale->z = glm::dot(Rt[2], dL_dMt[2]);
+
+	dL_dMt[0] *= s.x;
+	dL_dMt[1] *= s.y;
+	dL_dMt[2] *= s.z;
 
 	// Gradients of loss w.r.t. normalized quaternion
 	glm::vec4 dL_dq;
@@ -317,7 +326,7 @@ __device__ void computeCov3D(int idx, const glm::vec3 scale, float mod, const gl
 
 	// Gradients of loss w.r.t. unnormalized quaternion
 	float4* dL_drot = (float4*)(dL_drots + idx);
-	*dL_drot = dnormvdv(float4{ rot.x, rot.y, rot.z, rot.w }, float4{ dL_dq.x, dL_dq.y, dL_dq.z, dL_dq.w });
+	*dL_drot = float4{ dL_dq.x, dL_dq.y, dL_dq.z, dL_dq.w };//dnormvdv(float4{ rot.x, rot.y, rot.z, rot.w }, float4{ dL_dq.x, dL_dq.y, dL_dq.z, dL_dq.w });
 }
 
 // Backward pass of the preprocessing steps, except
@@ -377,7 +386,8 @@ __global__ void preprocessCUDA(
 
 // Backward version of the rendering procedure.
 template <uint32_t C>
-__global__ void renderCUDA(
+__global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
+renderCUDA(
 	const uint2* __restrict__ ranges,
 	const uint32_t* __restrict__ point_list,
 	int W, int H,
@@ -548,6 +558,7 @@ void BACKWARD::preprocess(
 	const float* viewmatrix,
 	const float* projmatrix,
 	const float focal_x, float focal_y,
+	const float tan_fovx, float tan_fovy,
 	const glm::vec3* campos,
 	const float3* dL_dmean2D,
 	const float* dL_dconic,
@@ -569,6 +580,8 @@ void BACKWARD::preprocess(
 		cov3Ds,
 		focal_x,
 		focal_y,
+		tan_fovx,
+		tan_fovy,
 		viewmatrix,
 		dL_dconic,
 		(float3*)dL_dmean3D,

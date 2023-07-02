@@ -60,7 +60,7 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
 }
 
 // Forward version of 2D covariance matrix computation
-__device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y, const float* cov3D, const float* viewmatrix)
+__device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y, float tan_fovx, float tan_fovy, const float* cov3D, const float* viewmatrix)
 {
 	// The following models the steps outlined by equations 29
 	// and 31 in "EWA Splatting" (Zwicker et al., 2002). 
@@ -68,12 +68,17 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 	// Transposes used to account for row-/column-major conventions.
 	float3 t = transformPoint4x3(mean, viewmatrix);
 
-	float t_inv_norm = 1.f / sqrt(t.x * t.x + t.y * t.y + t.z * t.z);
+	const float limx = 1.3f * tan_fovx;
+	const float limy = 1.3f * tan_fovy;
+	const float txtz = t.x / t.z;
+	const float tytz = t.y / t.z;
+	t.x = min(limx, max(-limx, txtz)) * t.z;
+	t.y = min(limy, max(-limy, tytz)) * t.z;
 
 	glm::mat3 J = glm::mat3(
 		focal_x / t.z, 0.0f, -(focal_x * t.x) / (t.z * t.z),
 		0.0f, focal_y / t.z, -(focal_y * t.y) / (t.z * t.z),
-		t.x * t_inv_norm, t.y * t_inv_norm, t.z * t_inv_norm);
+		0, 0, 0);
 
 	glm::mat3 W = glm::mat3(
 		viewmatrix[0], viewmatrix[4], viewmatrix[8],
@@ -98,17 +103,17 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 
 // Forward method for converting scale and rotation properties of each
 // Gaussian to a 3D covariance matrix in world space. Also takes care
-// of quaternion normalization and scale activation via exp.
+// of quaternion normalization.
 __device__ void computeCov3D(const glm::vec3 scale, float mod, const glm::vec4 rot, float* cov3D)
 {
 	// Create scaling matrix
 	glm::mat3 S = glm::mat3(1.0f);
-	S[0][0] = mod * exp(scale.x);
-	S[1][1] = mod * exp(scale.y);
-	S[2][2] = mod * exp(scale.z);
+	S[0][0] = mod * scale.x;
+	S[1][1] = mod * scale.y;
+	S[2][2] = mod * scale.z;
 
 	// Normalize quaternion to get valid rotation
-	glm::vec4 q = rot / glm::length(rot);
+	glm::vec4 q = rot;// / glm::length(rot);
 	float r = q.x;
 	float x = q.y;
 	float y = q.z;
@@ -172,7 +177,7 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	radii[idx] = 0;
 	tiles_touched[idx] = 0;
 
-	// Perform near and frustum culling with guardband, quit if outside.
+	// Perform near culling, quit if outside.
 	float3 p_view;
 	if (!in_frustum(idx, orig_points, viewmatrix, projmatrix, prefiltered, p_view))
 		return;
@@ -196,11 +201,8 @@ __global__ void preprocessCUDA(int P, int D, int M,
 		cov3D = cov3Ds + idx * 6;
 	}
 
-	// Compute max extent of Gaussian for fine-grained fustum culling
-	float max_dist2 = 9.f * max(cov3D[0], max(cov3D[3], cov3D[5]));
-
 	// Compute 2D screen-space covariance matrix
-	float3 cov = computeCov2D(p_orig, focal_x, focal_y, cov3D, viewmatrix);
+	float3 cov = computeCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
 
 	// Invert covariance (EWA algorithm)
 	float det = (cov.x * cov.z - cov.y * cov.y);
@@ -208,14 +210,6 @@ __global__ void preprocessCUDA(int P, int D, int M,
 		return;
 	float det_inv = 1.f / det;
 	float3 conic = { cov.z * det_inv, -cov.y * det_inv, cov.x * det_inv };
-
-	// Fine-grained frustum culling against ellipsoid
-	float z_at_point = p_view.z + sqrt(max_dist2);
-	float x_to_border = z_at_point * tan_fovx;
-	float y_to_border = z_at_point * tan_fovy;
-	float D2_point = p_view.x * p_view.x + p_view.y * p_view.y;
-	if (D2_point - (x_to_border * x_to_border + y_to_border * y_to_border) > max_dist2)
-		return;
 
 	// Compute extent in screen space (by finding eigenvalues of
 	// 2D covariance matrix). Use extent to compute a bounding rectangle
@@ -254,7 +248,8 @@ __global__ void preprocessCUDA(int P, int D, int M,
 // block, each thread treats one pixel. Alternates between fetching 
 // and rasterizing data.
 template <uint32_t CHANNELS>
-__global__ void renderCUDA(
+__global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
+renderCUDA(
 	const uint2* __restrict__ ranges,
 	const uint32_t* __restrict__ point_list,
 	int W, int H,
@@ -407,8 +402,8 @@ void FORWARD::preprocess(int P, int D, int M,
 	const float* projmatrix,
 	const glm::vec3* cam_pos,
 	const int W, int H,
-	const float tan_fovx, float tan_fovy,
 	const float focal_x, float focal_y,
+	const float tan_fovx, float tan_fovy,
 	int* radii,
 	float2* means2D,
 	float* depths,
