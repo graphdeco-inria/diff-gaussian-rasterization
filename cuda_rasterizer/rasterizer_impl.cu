@@ -221,7 +221,7 @@ int CudaRasterizer::Rasterizer::forward(
 	const bool prefiltered,
 	float* out_color,
 	int* radii,
-	int2* rects)
+	int* rects)
 {
 	const float focal_y = height / (2.0f * tan_fovy);
 	const float focal_x = width / (2.0f * tan_fovx);
@@ -274,7 +274,7 @@ int CudaRasterizer::Rasterizer::forward(
 		tile_grid,
 		geomState.tiles_touched,
 		prefiltered,
-		rects
+		(int2*)rects
 	);
 
 	// Compute prefix sum over full list of touched tile counts by Gaussians
@@ -301,7 +301,7 @@ int CudaRasterizer::Rasterizer::forward(
 		binningState.point_list_unsorted,
 		radii,
 		tile_grid,
-		rects
+		(int2*)rects
 		);
 
 	int bit = getHigherMsb(tile_grid.x * tile_grid.y);

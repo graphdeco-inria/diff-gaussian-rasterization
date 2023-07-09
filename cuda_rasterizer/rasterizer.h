@@ -50,7 +50,7 @@ namespace CudaRasterizer
 			const bool prefiltered,
 			float* out_color,
 			int* radii = nullptr,
-			int2* rects = nullptr);
+			int* rects = nullptr);
 
 		static void backward(
 			const int P, int D, int M, int R,
