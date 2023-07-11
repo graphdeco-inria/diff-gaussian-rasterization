@@ -132,9 +132,9 @@ __global__ void identifyTileRanges(int L, uint64_t* point_list_keys, uint2* rang
 			ranges[prevtile].y = idx;
 			ranges[currtile].x = idx;
 		}
-		if (idx == L - 1)
-			ranges[currtile].y = L;
 	}
+	if (idx == L - 1)
+		ranges[currtile].y = L;
 }
 
 // Mark Gaussians as visible/invisible, based on view frustum testing
@@ -310,11 +310,12 @@ int CudaRasterizer::Rasterizer::forward(
 	cudaMemset(imgState.ranges, 0, tile_grid.x * tile_grid.y * sizeof(uint2));
 
 	// Identify start and end of per-tile workloads in sorted list
-	identifyTileRanges << <(num_rendered + 255) / 256, 256 >> > (
-		num_rendered,
-		binningState.point_list_keys,
-		imgState.ranges
-		);
+	if (num_rendered > 0)
+		identifyTileRanges << <(num_rendered + 255) / 256, 256 >> > (
+			num_rendered,
+			binningState.point_list_keys,
+			imgState.ranges
+			);
 
 	// Let each tile blend its range of Gaussians independently in parallel
 	const float* feature_ptr = colors_precomp != nullptr ? colors_precomp : geomState.rgb;
