@@ -12,6 +12,7 @@
 from typing import NamedTuple
 import torch.nn as nn
 import torch
+import sys
 from . import _C
 
 def rasterize_gaussians(
@@ -74,8 +75,14 @@ class _RasterizeGaussians(torch.autograd.Function):
             raster_settings.prefiltered,
         )
 
-        # Invoke C++/CUDA rasterizer
-        num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
+        try:
+            # Invoke C++/CUDA rasterizer
+            num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
+        except Exception as ex:
+            # Something went wrong!
+            torch.save(args, "crash_fw.dump")
+            print("\nSomething has gone wrong! Inputs to reproduce error have been dumped in 'crash_fw.dump'", file=sys.stderr)
+            raise ex
 
         # Keep relevant tensors for backward
         ctx.raster_settings = raster_settings
@@ -113,8 +120,14 @@ class _RasterizeGaussians(torch.autograd.Function):
                 binningBuffer,
                 imgBuffer)
 
-        # Compute gradients for relevant tensors by invoking backward method
-        grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)        
+        try:
+            # Compute gradients for relevant tensors by invoking backward method
+            grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)        
+        except Exception as ex:
+            # Something went wrong!
+            torch.save(args, "crash_bw.dump")
+            print("Something has gone wrong! Inputs to reproduce error have been dumped in 'crash_bw.dump'", file=sys.stderr)
+            raise ex
 
         grads = (
             grad_means3D,
