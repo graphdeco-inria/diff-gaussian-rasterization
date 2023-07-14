@@ -120,6 +120,57 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 					SH_C3[3] * sh[12] * 3.f * (2.f * zz - xx - yy) +
 					SH_C3[4] * sh[13] * 4.f * 2.f * xz +
 					SH_C3[5] * sh[14] * (xx - yy));
+
+				if (deg > 3)
+				{
+					float dRGBdsh16 = SH_C4[0] * xy * (xx - yy);
+                    			float dRGBdsh17 = SH_C4[1] * yz * (3.f * xx - yy);
+                    			float dRGBdsh18 = SH_C4[2] * xy * (7.f * zz - 1.f);
+                    			float dRGBdsh19 = SH_C4[3] * yz * (7.f * zz - 3.f);
+                    			float dRGBdsh20 = SH_C4[4] * (zz * (35.f * zz - 30.f) + 3);
+                    			float dRGBdsh21 = SH_C4[5] * xz * (7.f * zz - 3.f);
+                    			float dRGBdsh22 = SH_C4[6] * (xx - yy) * (7.f * zz - 1.f);
+                    			float dRGBdsh23 = SH_C4[7] * xz * (xx - 3.f * yy);
+                    			float dRGBdsh24 = SH_C4[8] * (xx * (xx - 3.f * yy) - yy * (3.f * xx - yy));
+
+                    			dL_dsh[16] = dRGBdsh16 * dL_dRGB;
+                    			dL_dsh[17] = dRGBdsh17 * dL_dRGB;
+                    			dL_dsh[18] = dRGBdsh18 * dL_dRGB;
+                    			dL_dsh[19] = dRGBdsh19 * dL_dRGB;
+                    			dL_dsh[20] = dRGBdsh20 * dL_dRGB;
+                    			dL_dsh[21] = dRGBdsh21 * dL_dRGB;
+                    			dL_dsh[22] = dRGBdsh22 * dL_dRGB;
+                    			dL_dsh[23] = dRGBdsh23 * dL_dRGB;
+                    			dL_dsh[24] = dRGBdsh24 * dL_dRGB;
+
+
+                    			dRGBdx += (
+                        			SH_C4[0] * sh[16] * (3.0f * xx * y - yy * y) +
+                        			SH_C4[1] * sh[17] * 6.0f * x * y * z +
+                        			SH_C4[2] * sh[18] * (7.0f * y * zz - y) +
+                        			SH_C4[5] * sh[21] * (7.0f * zz * z - 3.0f * z) +
+                        			SH_C4[6] * sh[22] * (14.0f * x * zz - 2.0f * x) +
+                        			SH_C4[7] * sh[23] * (3.0f * xx * z - 3.0f * yy * z) +
+                        			SH_C4[8] * sh[24] * (4.0f * x * xx - 12.0f * x * yy));
+
+                    			dRGBdy += (
+                        			SH_C4[0] * sh[16] * (xx * x - 3.0f * yy * x) +
+                        			SH_C4[1] * sh[17] * (3.0f * xx * z - 3.0f * yy * z) +
+                        			SH_C4[2] * sh[18] * (7.0f * x * zz - x) +
+                        			SH_C4[3] * sh[19] * (7.0f * zz * z - 3.0f * z) +
+                        			SH_C4[6] * sh[22] * (-14.0f * y * zz + 2.0f * y) +
+                        			SH_C4[7] * sh[23] * -6.0f * x * y * z +
+                        			SH_C4[8] * sh[24] * (-12.0f * xx * y + 4.0f * yy * y));
+
+                    			dRGBdz += (
+                        			SH_C4[1] * sh[17] * (3.0f * y * xx - yy * y) +
+                        			SH_C4[2] * sh[18] * 14.0f * x * y * z +
+                        			SH_C4[3] * sh[19] * (21.0f * y * zz - 3.0f * y) +
+                        			SH_C4[4] * sh[20] * (140.0f * zz * z - 60.0f * z) +
+                        			SH_C4[5] * sh[21] * (21.0f * x * zz - 3.0f * x) +
+                        			SH_C4[6] * sh[22] * (14.0f * xx * z - 14.0f * yy * z) +
+                        			SH_C4[7] * sh[23] * (xx * x - 3.0f * x * yy));
+				}
 			}
 		}
 	}
