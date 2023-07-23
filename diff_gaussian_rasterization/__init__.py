@@ -134,8 +134,8 @@ class _RasterizeGaussians(torch.autograd.Function):
             try:
                 grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)
             except Exception as ex:
-                print("\nAn error occured in backward. Writing snapshot_bw.dump for debugging.\n")
                 torch.save(cpu_args, "snapshot_bw.dump")
+                print("\nAn error occured in backward. Writing snapshot_bw.dump for debugging.\n")
                 raise ex
         else:
              grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)
