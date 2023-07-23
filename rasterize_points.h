@@ -34,7 +34,8 @@ RasterizeGaussiansCUDA(
 	const torch::Tensor& sh,
 	const int degree,
 	const torch::Tensor& campos,
-	const bool prefiltered);
+	const bool prefiltered,
+	const bool debug);
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
  RasterizeGaussiansBackwardCUDA(
@@ -57,7 +58,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
 	const torch::Tensor& geomBuffer,
 	const int R,
 	const torch::Tensor& binningBuffer,
-	const torch::Tensor& imageBuffer);
+	const torch::Tensor& imageBuffer,
+	const bool debug);
 		
 torch::Tensor markVisible(
 		torch::Tensor& means3D,

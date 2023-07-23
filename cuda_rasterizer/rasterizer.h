@@ -49,7 +49,8 @@ namespace CudaRasterizer
 			const float tan_fovx, float tan_fovy,
 			const bool prefiltered,
 			float* out_color,
-			int* radii = nullptr);
+			int* radii = nullptr,
+			bool debug = false);
 
 		static void backward(
 			const int P, int D, int M, int R,
@@ -79,7 +80,8 @@ namespace CudaRasterizer
 			float* dL_dcov3D,
 			float* dL_dsh,
 			float* dL_dscale,
-			float* dL_drot);
+			float* dL_drot,
+			bool debug);
 	};
 };
 
