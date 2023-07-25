@@ -221,7 +221,9 @@ int CudaRasterizer::Rasterizer::forward(
 	const bool prefiltered,
 	float* out_color,
 	int* radii,
-	int* rects)
+	int* rects,
+	float* boxmin,
+	float* boxmax)
 {
 	const float focal_y = height / (2.0f * tan_fovy);
 	const float focal_x = width / (2.0f * tan_fovx);
@@ -246,6 +248,14 @@ int CudaRasterizer::Rasterizer::forward(
 	if (NUM_CHANNELS != 3 && colors_precomp == nullptr)
 	{
 		throw std::runtime_error("For non-RGB, provide precomputed Gaussian colors!");
+	}
+
+	float3 minn = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+	float3 maxx = { FLT_MAX, FLT_MAX, FLT_MAX };
+	if (boxmin != nullptr)
+	{
+		minn = *((float3*)boxmin);
+		maxx = *((float3*)boxmax);
 	}
 
 	// Run preprocessing per-Gaussian (transformation, bounding, conversion of SHs to RGB)
@@ -274,7 +284,9 @@ int CudaRasterizer::Rasterizer::forward(
 		tile_grid,
 		geomState.tiles_touched,
 		prefiltered,
-		(int2*)rects
+		(int2*)rects,
+		minn,
+		maxx
 	);
 
 	// Compute prefix sum over full list of touched tile counts by Gaussians
@@ -285,6 +297,9 @@ int CudaRasterizer::Rasterizer::forward(
 	// Retrieve total number of Gaussian instances to launch and resize aux buffers
 	int num_rendered;
 	cudaMemcpy(&num_rendered, geomState.point_offsets + P - 1, sizeof(int), cudaMemcpyDeviceToHost);
+
+	if (num_rendered == 0)
+		return 0;
 
 	int binning_chunk_size = required<BinningState>(num_rendered);
 	char* binning_chunkptr = binningBuffer(binning_chunk_size);

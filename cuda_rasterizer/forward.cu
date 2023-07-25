@@ -178,7 +178,9 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	const dim3 grid,
 	uint32_t* tiles_touched,
 	bool prefiltered,
-	int2* rects)
+	int2* rects,
+	float3 boxmin,
+	float3 boxmax)
 {
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P)
@@ -196,6 +198,11 @@ __global__ void preprocessCUDA(int P, int D, int M,
 
 	// Transform point by projecting
 	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
+
+	if (p_orig.x < boxmin.x || p_orig.y < boxmin.y || p_orig.z < boxmin.z ||
+		p_orig.x > boxmax.x || p_orig.y > boxmax.y || p_orig.z > boxmax.z)
+		return;
+
 	float4 p_hom = transformPoint4x4(p_orig, projmatrix);
 	float p_w = 1.0f / (p_hom.w + 0.0000001f);
 	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
@@ -437,7 +444,9 @@ void FORWARD::preprocess(int P, int D, int M,
 	const dim3 grid,
 	uint32_t* tiles_touched,
 	bool prefiltered,
-	int2* rects)
+	int2* rects,
+	float3 boxmin,
+	float3 boxmax)
 {
 	preprocessCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > (
 		P, D, M,
@@ -465,6 +474,8 @@ void FORWARD::preprocess(int P, int D, int M,
 		grid,
 		tiles_touched,
 		prefiltered,
-		rects
+		rects,
+		boxmin,
+		boxmax
 		);
 }
