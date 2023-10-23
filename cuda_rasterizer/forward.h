@@ -35,6 +35,9 @@ namespace FORWARD
 		const float* projmatrix,
 		const glm::vec3* cam_pos,
 		const int W, int H,
+		const int render_mode,
+		const float min_depth, 
+		const float max_depth,
 		const float focal_x, float focal_y,
 		const float tan_fovx, float tan_fovy,
 		int* radii,
@@ -45,7 +48,10 @@ namespace FORWARD
 		float4* conic_opacity,
 		const dim3 grid,
 		uint32_t* tiles_touched,
-		bool prefiltered);
+		bool prefiltered,
+		int2* rects,
+		float3 boxmin,
+		float3 boxmax);
 
 	// Main rasterization method.
 	void render(
@@ -59,7 +65,13 @@ namespace FORWARD
 		float* final_T,
 		uint32_t* n_contrib,
 		const float* bg_color,
-		float* out_color);
+		float* out_color,
+		const float* means3D, // info that is used to compute normal per gaussian
+		const glm::vec3* scales,
+		const glm::vec4* rotations,
+		const glm::vec3* cam_pos,
+		const float* viewmatrix,
+		const float tan_fovx, float tan_fovy);
 }
 
 

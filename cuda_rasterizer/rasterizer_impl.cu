@@ -21,7 +21,9 @@
 #include <cub/device/device_radix_sort.cuh>
 #define GLM_FORCE_CUDA
 #include <glm/glm.hpp>
-
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#define __CUDACC__
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
 namespace cg = cooperative_groups;
@@ -75,7 +77,8 @@ __global__ void duplicateWithKeys(
 	uint64_t* gaussian_keys_unsorted,
 	uint32_t* gaussian_values_unsorted,
 	int* radii,
-	dim3 grid)
+	dim3 grid,
+	int2* rects)
 {
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P)
@@ -88,7 +91,10 @@ __global__ void duplicateWithKeys(
 		uint32_t off = (idx == 0) ? 0 : offsets[idx - 1];
 		uint2 rect_min, rect_max;
 
-		getRect(points_xy[idx], radii[idx], rect_min, rect_max, grid);
+		if(rects == nullptr)
+			getRect(points_xy[idx], radii[idx], rect_min, rect_max, grid);
+		else
+			getRect(points_xy[idx], rects[idx], rect_min, rect_max, grid);
 
 		// For each tile that the bounding rect overlaps, emit a 
 		// key/value pair. The key is |  tile ID  |      depth      |,
@@ -132,9 +138,9 @@ __global__ void identifyTileRanges(int L, uint64_t* point_list_keys, uint2* rang
 			ranges[prevtile].y = idx;
 			ranges[currtile].x = idx;
 		}
+		if (idx == L - 1)
+			ranges[currtile].y = L;
 	}
-	if (idx == L - 1)
-		ranges[currtile].y = L;
 }
 
 // Mark Gaussians as visible/invisible, based on view frustum testing
@@ -202,6 +208,9 @@ int CudaRasterizer::Rasterizer::forward(
 	const int P, int D, int M,
 	const float* background,
 	const int width, int height,
+	const int render_mode,
+	const float min_depth,
+	const float max_depth,
 	const float* means3D,
 	const float* shs,
 	const float* colors_precomp,
@@ -217,7 +226,9 @@ int CudaRasterizer::Rasterizer::forward(
 	const bool prefiltered,
 	float* out_color,
 	int* radii,
-	bool debug)
+	int* rects,
+	float* boxmin,
+	float* boxmax)
 {
 	const float focal_y = height / (2.0f * tan_fovy);
 	const float focal_x = width / (2.0f * tan_fovx);
@@ -235,7 +246,7 @@ int CudaRasterizer::Rasterizer::forward(
 	dim3 block(BLOCK_X, BLOCK_Y, 1);
 
 	// Dynamically resize image-based auxiliary buffers during training
-	size_t img_chunk_size = required<ImageState>(width * height);
+	int img_chunk_size = required<ImageState>(width * height);
 	char* img_chunkptr = imageBuffer(img_chunk_size);
 	ImageState imgState = ImageState::fromChunk(img_chunkptr, width * height);
 
@@ -244,8 +255,16 @@ int CudaRasterizer::Rasterizer::forward(
 		throw std::runtime_error("For non-RGB, provide precomputed Gaussian colors!");
 	}
 
+	float3 minn = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+	float3 maxx = { FLT_MAX, FLT_MAX, FLT_MAX };
+	if (boxmin != nullptr)
+	{
+		minn = *((float3*)boxmin);
+		maxx = *((float3*)boxmax);
+	}
+
 	// Run preprocessing per-Gaussian (transformation, bounding, conversion of SHs to RGB)
-	CHECK_CUDA(FORWARD::preprocess(
+	FORWARD::preprocess(
 		P, D, M,
 		means3D,
 		(glm::vec3*)scales,
@@ -259,6 +278,9 @@ int CudaRasterizer::Rasterizer::forward(
 		viewmatrix, projmatrix,
 		(glm::vec3*)cam_pos,
 		width, height,
+		render_mode,
+		min_depth,
+		max_depth,
 		focal_x, focal_y,
 		tan_fovx, tan_fovy,
 		radii,
@@ -269,18 +291,25 @@ int CudaRasterizer::Rasterizer::forward(
 		geomState.conic_opacity,
 		tile_grid,
 		geomState.tiles_touched,
-		prefiltered
-	), debug)
+		prefiltered,
+		(int2*)rects,
+		minn,
+		maxx
+	);
 
 	// Compute prefix sum over full list of touched tile counts by Gaussians
 	// E.g., [2, 3, 0, 2, 1] -> [2, 5, 5, 7, 8]
-	CHECK_CUDA(cub::DeviceScan::InclusiveSum(geomState.scanning_space, geomState.scan_size, geomState.tiles_touched, geomState.point_offsets, P), debug)
+	cub::DeviceScan::InclusiveSum(geomState.scanning_space, geomState.scan_size,
+		geomState.tiles_touched, geomState.point_offsets, P);
 
 	// Retrieve total number of Gaussian instances to launch and resize aux buffers
 	int num_rendered;
-	CHECK_CUDA(cudaMemcpy(&num_rendered, geomState.point_offsets + P - 1, sizeof(int), cudaMemcpyDeviceToHost), debug);
+	cudaMemcpy(&num_rendered, geomState.point_offsets + P - 1, sizeof(int), cudaMemcpyDeviceToHost);
 
-	size_t binning_chunk_size = required<BinningState>(num_rendered);
+	if (num_rendered == 0)
+		return 0;
+
+	int binning_chunk_size = required<BinningState>(num_rendered);
 	char* binning_chunkptr = binningBuffer(binning_chunk_size);
 	BinningState binningState = BinningState::fromChunk(binning_chunkptr, num_rendered);
 
@@ -294,32 +323,32 @@ int CudaRasterizer::Rasterizer::forward(
 		binningState.point_list_keys_unsorted,
 		binningState.point_list_unsorted,
 		radii,
-		tile_grid)
-	CHECK_CUDA(, debug)
+		tile_grid,
+		(int2*)rects
+		);
 
 	int bit = getHigherMsb(tile_grid.x * tile_grid.y);
 
 	// Sort complete list of (duplicated) Gaussian indices by keys
-	CHECK_CUDA(cub::DeviceRadixSort::SortPairs(
+	cub::DeviceRadixSort::SortPairs(
 		binningState.list_sorting_space,
 		binningState.sorting_size,
 		binningState.point_list_keys_unsorted, binningState.point_list_keys,
 		binningState.point_list_unsorted, binningState.point_list,
-		num_rendered, 0, 32 + bit), debug)
+		num_rendered, 0, 32 + bit);
 
-	CHECK_CUDA(cudaMemset(imgState.ranges, 0, tile_grid.x * tile_grid.y * sizeof(uint2)), debug);
+	cudaMemset(imgState.ranges, 0, tile_grid.x * tile_grid.y * sizeof(uint2));
 
 	// Identify start and end of per-tile workloads in sorted list
-	if (num_rendered > 0)
-		identifyTileRanges << <(num_rendered + 255) / 256, 256 >> > (
-			num_rendered,
-			binningState.point_list_keys,
-			imgState.ranges);
-	CHECK_CUDA(, debug)
+	identifyTileRanges << <(num_rendered + 255) / 256, 256 >> > (
+		num_rendered,
+		binningState.point_list_keys,
+		imgState.ranges
+		);
 
 	// Let each tile blend its range of Gaussians independently in parallel
 	const float* feature_ptr = colors_precomp != nullptr ? colors_precomp : geomState.rgb;
-	CHECK_CUDA(FORWARD::render(
+	FORWARD::render(
 		tile_grid, block,
 		imgState.ranges,
 		binningState.point_list,
@@ -330,7 +359,13 @@ int CudaRasterizer::Rasterizer::forward(
 		imgState.accum_alpha,
 		imgState.n_contrib,
 		background,
-		out_color), debug)
+		out_color,
+		means3D,
+		(glm::vec3*)scales, 
+		(glm::vec4*)rotations, 
+		(glm::vec3*)cam_pos, 
+		viewmatrix,
+		tan_fovx, tan_fovy);
 
 	return num_rendered;
 }
@@ -365,8 +400,7 @@ void CudaRasterizer::Rasterizer::backward(
 	float* dL_dcov3D,
 	float* dL_dsh,
 	float* dL_dscale,
-	float* dL_drot,
-	bool debug)
+	float* dL_drot)
 {
 	GeometryState geomState = GeometryState::fromChunk(geom_buffer, P);
 	BinningState binningState = BinningState::fromChunk(binning_buffer, R);
@@ -387,7 +421,7 @@ void CudaRasterizer::Rasterizer::backward(
 	// opacity and RGB of Gaussians from per-pixel loss gradients.
 	// If we were given precomputed colors and not SHs, use them.
 	const float* color_ptr = (colors_precomp != nullptr) ? colors_precomp : geomState.rgb;
-	CHECK_CUDA(BACKWARD::render(
+	BACKWARD::render(
 		tile_grid,
 		block,
 		imgState.ranges,
@@ -403,13 +437,13 @@ void CudaRasterizer::Rasterizer::backward(
 		(float3*)dL_dmean2D,
 		(float4*)dL_dconic,
 		dL_dopacity,
-		dL_dcolor), debug)
+		dL_dcolor);
 
 	// Take care of the rest of preprocessing. Was the precomputed covariance
 	// given to us or a scales/rot pair? If precomputed, pass that. If not,
 	// use the one we computed ourselves.
 	const float* cov3D_ptr = (cov3D_precomp != nullptr) ? cov3D_precomp : geomState.cov3D;
-	CHECK_CUDA(BACKWARD::preprocess(P, D, M,
+	BACKWARD::preprocess(P, D, M,
 		(float3*)means3D,
 		radii,
 		shs,
@@ -430,5 +464,5 @@ void CudaRasterizer::Rasterizer::backward(
 		dL_dcov3D,
 		dL_dsh,
 		(glm::vec3*)dL_dscale,
-		(glm::vec4*)dL_drot), debug)
+		(glm::vec4*)dL_drot);
 }

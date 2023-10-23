@@ -35,6 +35,9 @@ namespace CudaRasterizer
 			const int P, int D, int M,
 			const float* background,
 			const int width, int height,
+			const int render_mode,
+			const float min_depth,
+			const float max_depth,
 			const float* means3D,
 			const float* shs,
 			const float* colors_precomp,
@@ -50,7 +53,10 @@ namespace CudaRasterizer
 			const bool prefiltered,
 			float* out_color,
 			int* radii = nullptr,
-			bool debug = false);
+			int* rects = nullptr,
+			float* boxmin = nullptr,
+			float* boxmax = nullptr
+			);
 
 		static void backward(
 			const int P, int D, int M, int R,
@@ -80,8 +86,7 @@ namespace CudaRasterizer
 			float* dL_dcov3D,
 			float* dL_dsh,
 			float* dL_dscale,
-			float* dL_drot,
-			bool debug);
+			float* dL_drot);
 	};
 };
 
