@@ -8,7 +8,7 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
-
+set(CMAKE_CUDA_ARCHITECTURES 86)
 cmake_minimum_required(VERSION 3.20)
 
 project(DiffRast LANGUAGES CUDA CXX)

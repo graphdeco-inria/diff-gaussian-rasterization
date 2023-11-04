@@ -15,6 +15,20 @@
 #include <cooperative_groups/reduce.h>
 namespace cg = cooperative_groups;
 
+// Light
+__device__ glm::vec3 computeColorFromLight(int idx, const glm::vec3* means, const float xlightpos, const float ylightpos, const float zlightpos, const float min_depth, const float max_depth) {
+	glm::vec3 pos = means[idx];
+	glm::vec3 lightpos = glm::vec3(xlightpos, ylightpos, zlightpos);
+	glm::vec3 dir = lightpos - pos;
+	float minn = min(min_depth, max_depth);
+	float maxx = max(min_depth, max_depth);
+	float distance = glm::length(dir);
+	if (distance < minn || distance > maxx)
+		return glm::vec3(0.f);
+	return glm::vec3(1.0f);
+}
+
+
 // Forward method for converting the input spherical harmonics
 // coefficients of each Gaussian to a simple RGB color.
 __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const glm::vec3* means, glm::vec3 campos, const float* shs, bool* clamped)
@@ -294,6 +308,9 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	const int render_mode,
 	const float min_depth,
 	const float max_depth,
+	const float xlightpos,
+	const float ylightpos,
+	const float zlightpos,
 	const float tan_fovx, float tan_fovy,
 	const float focal_x, float focal_y,
 	int* radii,
@@ -394,6 +411,8 @@ __global__ void preprocessCUDA(int P, int D, int M,
 			result = computeColorFromDepth(idx, (glm::vec3*)orig_points, *cam_pos, min_depth, max_depth);
 		else if (render_mode == 2)
 			result = computeColorFromNormal2(scales[idx], rotations[idx]);
+		else if (render_mode == 3)
+			result = computeColorFromLight(idx, (glm::vec3*)orig_points, xlightpos, ylightpos, zlightpos, min_depth, max_depth);
 			//result = computeColorFromNormal(idx, (glm::vec3*)orig_points, *cam_pos, scales[idx], rotations[idx]);
 		rgb[idx * C + 0] = result.x;
 		rgb[idx * C + 1] = result.y;
@@ -610,6 +629,9 @@ void FORWARD::preprocess(int P, int D, int M,
 	const int render_mode,
 	const float min_depth,
 	const float max_depth,
+	const float xlightpos,
+	const float ylightpos,
+	const float zlightpos,
 	const float focal_x, float focal_y,
 	const float tan_fovx, float tan_fovy,
 	int* radii,
@@ -643,6 +665,9 @@ void FORWARD::preprocess(int P, int D, int M,
 		render_mode,
 		min_depth,
 		max_depth,
+		xlightpos,
+		ylightpos,
+		zlightpos,
 		tan_fovx, tan_fovy,
 		focal_x, focal_y,
 		radii,
