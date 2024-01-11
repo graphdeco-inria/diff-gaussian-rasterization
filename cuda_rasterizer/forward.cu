@@ -179,6 +179,8 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	uint32_t* tiles_touched,
 	bool prefiltered)
 {
+	cov3D_precomp = nullptr;
+	
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P)
 		return;
