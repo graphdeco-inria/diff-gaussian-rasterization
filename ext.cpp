@@ -41,7 +41,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
           [](int image_height,
     int image_width,
     int degree,
-    int P, double tan_fovx, double tan_fovy) {
+    int P, float tan_fovx, float tan_fovy) {
           FwdDescriptor d;
           d.image_height = image_height;
           d.image_width = image_width;
