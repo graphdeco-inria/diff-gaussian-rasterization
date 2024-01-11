@@ -11,10 +11,30 @@
 
 #pragma once
 #include <torch/extension.h>
+#include <cuda_runtime.h>
 #include <cstdio>
 #include <tuple>
 #include <string>
-	
+#include "bindings.h"
+
+//-------------------------------------------------------------------------
+// Descriptors.
+
+struct FwdDescriptor {
+    int image_height;
+    int image_width;
+    int degree;
+    int P;
+    double tan_fovx;
+    double tan_fovy;
+};
+
+void RasterizeGaussiansCUDAJAX(
+	cudaStream_t stream,
+	void **buffers,
+	const char *opaque, std::size_t opaque_len
+);
+
 std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
 	const torch::Tensor& background,
