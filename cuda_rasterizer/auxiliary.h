@@ -153,11 +153,11 @@ __forceinline__ __device__ bool in_frustum(int idx,
 
 	if (p_view.z <= 0.2f)// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
 	{
-		if (prefiltered)
-		{
-			printf("Point is filtered although prefiltered is set. This shouldn't happen!");
-			__trap();
-		}
+		/* if (prefiltered) */
+		/* { */
+		/* 	printf("Point is filtered although prefiltered is set. This shouldn't happen!"); */
+		/* 	__trap(); */
+		/* } */
 		return false;
 	}
 	return true;

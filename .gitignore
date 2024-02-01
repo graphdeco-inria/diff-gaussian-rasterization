@@ -1,3 +1,6 @@
 build/
 diff_gaussian_rasterization.egg-info/
 dist/
+hip_rasterizer/
+
+*.hip

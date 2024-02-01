@@ -12,7 +12,7 @@
 #include "forward.h"
 #include "auxiliary.h"
 #include <cooperative_groups.h>
-#include <cooperative_groups/reduce.h>
+// #include <cooperative_groups/reduce.h>
 namespace cg = cooperative_groups;
 
 // Forward method for converting the input spherical harmonics
@@ -386,7 +386,7 @@ void FORWARD::render(
 	const float* bg_color,
 	float* out_color)
 {
-	renderCUDA<NUM_CHANNELS> << <grid, block >> > (
+	renderCUDA<NUM_CHANNELS><<<grid, block>>> (
 		ranges,
 		point_list,
 		W, H,
@@ -425,7 +425,7 @@ void FORWARD::preprocess(int P, int D, int M,
 	uint32_t* tiles_touched,
 	bool prefiltered)
 {
-	preprocessCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > (
+	preprocessCUDA<NUM_CHANNELS><<<(P + 255) / 256, 256>>> (
 		P, D, M,
 		means3D,
 		scales,

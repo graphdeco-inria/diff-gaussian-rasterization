@@ -14,7 +14,7 @@
 
 #include <cuda.h>
 #include "cuda_runtime.h"
-#include "device_launch_parameters.h"
+// #include "device_launch_parameters.h"
 #define GLM_FORCE_CUDA
 #include <glm/glm.hpp>
 
