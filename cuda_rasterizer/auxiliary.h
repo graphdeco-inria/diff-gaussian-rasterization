@@ -163,6 +163,31 @@ __forceinline__ __device__ bool in_frustum(int idx,
 	return true;
 }
 
+__forceinline__ __device__ bool in_sphere(int idx,
+	const float* orig_points,
+	const float* viewmatrix,
+	const float* projmatrix,
+	bool prefiltered,
+	float3& p_view)
+{
+	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
+	float3 t_p_orig = transformPoint4x3(p_orig, viewmatrix);
+	float3 direction_vector = make_float3(t_p_orig.x, t_p_orig.y, t_p_orig.z);
+	float direction_vector_length = sqrt(direction_vector.x * direction_vector.x + direction_vector.y * direction_vector.y + direction_vector.z * direction_vector.z);
+	
+
+	if (direction_vector_length <= 0.2f)// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
+	{
+		if (prefiltered)
+		{
+			printf("Point is filtered although prefiltered is set. This shouldn't happen!");
+			__trap();
+		}
+		return false;
+	}
+	return true;
+}
+
 #define CHECK_CUDA(A, debug) \
 A; if(debug) { \
 auto ret = cudaDeviceSynchronize(); \
