@@ -337,10 +337,10 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 		return;
 
 	// Transform point by projecting
-	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
-	float3 direction_vector = make_float3(p_orig.x - cam_pos->x, p_orig.y - cam_pos->y, p_orig.z - cam_pos->z);
-	float direction_vector_length = sqrt(direction_vector.x * direction_vector.x + direction_vector.y * direction_vector.y + direction_vector.z * direction_vector.z);
+    glm::vec3 p_orig = glm::vec3(orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2]);
 
+	glm::vec3 direction_vector = p_orig - campos;
+	glm::vec3 direction_vector_length = glm::length(direction_vector);
 	float latitude = asinf(direction_vector.y);
 	float longitude = atan2f(direction_vector.z, direction_vector.x);
 	float normalized_latitude = latitude / (M_PI / 2.0f);
