@@ -124,10 +124,14 @@ __device__ float3 computesphericalCov2D(const float3& mean, const float* cov3D, 
 	float focal_x = 1.0f;
 	float focal_y = 1.0f;
 
+	glm::vec3 muPrime = glm::vec3(t.x / t.z, t.y / t.z, 1.0f);
+
+	float denom = - 1.0f / powf(t.z + t.x * mu_prime.x + t.y * mu_prime.y + t.z * mu_prime.z, 2.0f);
 	glm::mat3 J = glm::mat3(
-		focal_x / t.z, 0.0f, -(focal_x * t.x) / (t.z * t.z),
-		0.0f, focal_y / t.z, -(focal_y * t.y) / (t.z * t.z),
-		0, 0, 0);
+		(mu_prime.y * t.y + mu_prime.z * t.z) * denom, mu_prime.x * t.x * denom, mu_prime.x * t.x * denom,
+		mu_prime.x * t.y * denom, (mu_prime.x * t.x + mu_prime.z * t.z) * denom, mu_prime.y * t.y * denom,
+		mu_prime.x * t.z * denom, mu_prime.y * t.z * denom, (mu_prime.x * t.x + mu_prime.y * t.y) * denom
+	);
 
 	glm::mat3 W = glm::mat3(
 		viewmatrix[0], viewmatrix[4], viewmatrix[8],

@@ -299,9 +299,14 @@ __global__ void computesphericalCov2DCUDA(int P,
 	float3 dL_dconic = { dL_dconics[4 * idx], dL_dconics[4 * idx + 1], dL_dconics[4 * idx + 3] };
 	float3 t = transformPoint4x3(mean, view_matrix);
 	
-	glm::mat3 J = glm::mat3(h_x / t.z, 0.0f, -(h_x * t.x) / (t.z * t.z),
-		0.0f, h_y / t.z, -(h_y * t.y) / (t.z * t.z),
-		0, 0, 0);
+	glm::vec3 muPrime = glm::vec3(t.x / t.z, t.y / t.z, 1.0f);
+
+	float denom = - 1.0f / powf(t.z + t.x * mu_prime.x + t.y * mu_prime.y + t.z * mu_prime.z, 2.0f);
+	glm::mat3 J = glm::mat3(
+		(mu_prime.y * t.y + mu_prime.z * t.z) * denom, mu_prime.x * t.x * denom, mu_prime.x * t.x * denom,
+		mu_prime.x * t.y * denom, (mu_prime.x * t.x + mu_prime.z * t.z) * denom, mu_prime.y * t.y * denom,
+		mu_prime.x * t.z * denom, mu_prime.y * t.z * denom, (mu_prime.x * t.x + mu_prime.y * t.y) * denom
+	);
 
 	glm::mat3 W = glm::mat3(
 		view_matrix[0], view_matrix[4], view_matrix[8],
