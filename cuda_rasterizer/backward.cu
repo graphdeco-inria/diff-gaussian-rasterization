@@ -13,6 +13,7 @@
 #include "auxiliary.h"
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
+#include <glm/gtc/type_ptr.hpp>
 namespace cg = cooperative_groups;
 
 // Backward pass for conversion of spherical harmonics to RGB for
@@ -353,7 +354,8 @@ __global__ void preprocessCUDA(
 	const glm::vec3* scales,
 	const glm::vec4* rotations,
 	const float scale_modifier,
-	const float* proj,
+	const float* view_matrix,
+	const float* proj_matrix,
 	const glm::vec3* campos,
 	const float3* dL_dmean2D,
 	glm::vec3* dL_dmeans,
@@ -370,6 +372,8 @@ __global__ void preprocessCUDA(
 	float3 m = means[idx];
 
 	// Taking care of gradients from the screenspace points
+       glm::mat4x4 full_proj_matrix = glm::make_mat4(proj_matrix) * glm::make_mat4(view_matrix);
+       float* proj = (float*)glm::value_ptr(full_proj_matrix);
 	float4 m_hom = transformPoint4x4(m, proj);
 	float m_w = 1.0f / (m_hom.w + 0.0000001f);
 
