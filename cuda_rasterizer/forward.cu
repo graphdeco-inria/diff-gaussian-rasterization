@@ -124,7 +124,7 @@ __device__ float3 computesphericalCov2D(const float3& mean, const float* cov3D, 
 	float focal_x = 1.0f;
 	float focal_y = 1.0f;
 
-	glm::vec3 muPrime = glm::vec3(t.x / t.z, t.y / t.z, 1.0f);
+	glm::vec3 mu_prime = glm::vec3(t.x / t.z, t.y / t.z, 1.0f);
 
 	float denom = - 1.0f / powf(t.z + t.x * mu_prime.x + t.y * mu_prime.y + t.z * mu_prime.z, 2.0f);
 	glm::mat3 J = glm::mat3(
@@ -343,8 +343,8 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 	// Transform point by projecting
     glm::vec3 p_orig = glm::vec3(orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2]);
 
-	glm::vec3 direction_vector = p_orig - campos;
-	glm::vec3 direction_vector_length = glm::length(direction_vector);
+	glm::vec3 direction_vector = p_orig - *cam_pos;
+	float direction_vector_length = glm::length(direction_vector);
 	float latitude = asinf(direction_vector.y);
 	float longitude = atan2f(direction_vector.z, direction_vector.x);
 	float normalized_latitude = latitude / (M_PI / 2.0f);
@@ -365,7 +365,7 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 	}
 
 	// Compute 2D screen-space covariance matrix
-	float3 cov = computesphericalCov2D(p_orig, cov3D, viewmatrix);
+	float3 cov = computesphericalCov2D(p_proj, cov3D, viewmatrix);
 
 	// Invert covariance (EWA algorithm)
 	float det = (cov.x * cov.z - cov.y * cov.y);
@@ -578,6 +578,62 @@ void FORWARD::preprocess(int P, int D, int M,
 	bool prefiltered)
 {
 	preprocessCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > (
+		P, D, M,
+		means3D,
+		scales,
+		scale_modifier,
+		rotations,
+		opacities,
+		shs,
+		clamped,
+		cov3D_precomp,
+		colors_precomp,
+		viewmatrix, 
+		projmatrix,
+		cam_pos,
+		W, H,
+		tan_fovx, tan_fovy,
+		focal_x, focal_y,
+		radii,
+		means2D,
+		depths,
+		cov3Ds,
+		rgb,
+		conic_opacity,
+		grid,
+		tiles_touched,
+		prefiltered
+		);
+}
+
+
+void FORWARD::preprocessspherical(int P, int D, int M,
+	const float* means3D,
+	const glm::vec3* scales,
+	const float scale_modifier,
+	const glm::vec4* rotations,
+	const float* opacities,
+	const float* shs,
+	bool* clamped,
+	const float* cov3D_precomp,
+	const float* colors_precomp,
+	const float* viewmatrix,
+	const float* projmatrix,
+	const glm::vec3* cam_pos,
+	const int W, int H,
+	const float focal_x, float focal_y,
+	const float tan_fovx, float tan_fovy,
+	int* radii,
+	float2* means2D,
+	float* depths,
+	float* cov3Ds,
+	float* rgb,
+	float4* conic_opacity,
+	const dim3 grid,
+	uint32_t* tiles_touched,
+	bool prefiltered)
+{
+	preprocesssphericalCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > (
 		P, D, M,
 		means3D,
 		scales,

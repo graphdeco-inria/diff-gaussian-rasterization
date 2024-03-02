@@ -299,13 +299,13 @@ __global__ void computesphericalCov2DCUDA(int P,
 	float3 dL_dconic = { dL_dconics[4 * idx], dL_dconics[4 * idx + 1], dL_dconics[4 * idx + 3] };
 	float3 t = transformPoint4x3(mean, view_matrix);
 	
-	glm::vec3 muPrime = glm::vec3(t.x / t.z, t.y / t.z, 1.0f);
+	glm::vec3 mu_prime = glm::vec3(t.x / t.z, t.y / t.z, 1.0f);
 
-	float denom = - 1.0f / powf(t.z + t.x * mu_prime.x + t.y * mu_prime.y + t.z * mu_prime.z, 2.0f);
+	float denom_inv = - 1.0f / (powf(t.z + t.x * mu_prime.x + t.y * mu_prime.y + t.z * mu_prime.z, 2.0f) + 0.0000001f);
 	glm::mat3 J = glm::mat3(
-		(mu_prime.y * t.y + mu_prime.z * t.z) * denom, mu_prime.x * t.x * denom, mu_prime.x * t.x * denom,
-		mu_prime.x * t.y * denom, (mu_prime.x * t.x + mu_prime.z * t.z) * denom, mu_prime.y * t.y * denom,
-		mu_prime.x * t.z * denom, mu_prime.y * t.z * denom, (mu_prime.x * t.x + mu_prime.y * t.y) * denom
+		(mu_prime.y * t.y + mu_prime.z * t.z) * denom_inv, mu_prime.x * t.x * denom_inv, mu_prime.x * t.x * denom_inv,
+		mu_prime.x * t.y * denom_inv, (mu_prime.x * t.x + mu_prime.z * t.z) * denom_inv, mu_prime.y * t.y * denom_inv,
+		mu_prime.x * t.z * denom_inv, mu_prime.y * t.z * denom_inv, (mu_prime.x * t.x + mu_prime.y * t.y) * denom_inv
 	);
 
 	glm::mat3 W = glm::mat3(
@@ -556,11 +556,14 @@ __global__ void preprocessspehricalCUDA(
 	// Compute loss gradient w.r.t. 3D means due to gradients of 2D means
 	// from rendering procedure
 	glm::vec3 dL_dmean;
-	float mul1 = (proj[0] * m.x + proj[4] * m.y + proj[8] * m.z + proj[12]);
-	float mul2 = (proj[1] * m.x + proj[5] * m.y + proj[9] * m.z + proj[13]);
-	dL_dmean.x = (proj[0] - proj[3] * mul1) * dL_dmean2D[idx].x + (proj[1] - proj[3] * mul2) * dL_dmean2D[idx].y;
-	dL_dmean.y = (proj[4] - proj[7] * mul1) * dL_dmean2D[idx].x + (proj[5] - proj[7] * mul2) * dL_dmean2D[idx].y;
-	dL_dmean.z = (proj[8] - proj[11] * mul1) * dL_dmean2D[idx].x + (proj[9] - proj[11] * mul2) * dL_dmean2D[idx].y;
+
+	float denormalized_latitude = dL_dmean2D[idx].y * (M_PI / 2.0f);
+	float denormalized_longitude = dL_dmean2D[idx].x * M_PI;
+
+	dL_dmean.y = sinf(denormalized_latitude);
+	float r = cosf(denormalized_latitude);
+	dL_dmean.x = r * cosf(denormalized_longitude);
+	dL_dmean.z = r * sinf(denormalized_longitude);
 
 	// That's the second part of the mean gradient. Previous computation
 	// of cov2D and following SH conversion also affects it.
@@ -783,6 +786,69 @@ void BACKWARD::preprocess(
 	// propagate color gradients to SH (if desireD), propagate 3D covariance
 	// matrix gradients to scale and rotation.
 	preprocessCUDA<NUM_CHANNELS> << < (P + 255) / 256, 256 >> > (
+		P, D, M,
+		(float3*)means3D,
+		radii,
+		shs,
+		clamped,
+		(glm::vec3*)scales,
+		(glm::vec4*)rotations,
+		scale_modifier,
+		projmatrix,
+		campos,
+		(float3*)dL_dmean2D,
+		(glm::vec3*)dL_dmean3D,
+		dL_dcolor,
+		dL_dcov3D,
+		dL_dsh,
+		dL_dscale,
+		dL_drot);
+}
+
+void BACKWARD::preprocessspherical(
+	int P, int D, int M,
+	const float3* means3D,
+	const int* radii,
+	const float* shs,
+	const bool* clamped,
+	const glm::vec3* scales,
+	const glm::vec4* rotations,
+	const float scale_modifier,
+	const float* cov3Ds,
+	const float* viewmatrix,
+	const float* projmatrix,
+	const float focal_x, float focal_y,
+	const float tan_fovx, float tan_fovy,
+	const glm::vec3* campos,
+	const float3* dL_dmean2D,
+	const float* dL_dconic,
+	glm::vec3* dL_dmean3D,
+	float* dL_dcolor,
+	float* dL_dcov3D,
+	float* dL_dsh,
+	glm::vec3* dL_dscale,
+	glm::vec4* dL_drot)
+{
+	// Propagate gradients for the path of 2D conic matrix computation. 
+	// Somewhat long, thus it is its own kernel rather than being part of 
+	// "preprocess". When done, loss gradient w.r.t. 3D means has been
+	// modified and gradient w.r.t. 3D covariance matrix has been computed.	
+	computesphericalCov2DCUDA << <(P + 255) / 256, 256 >> > (
+		P,
+		means3D,
+		radii,
+		cov3Ds,
+		focal_x,
+		focal_y,
+		viewmatrix,
+		dL_dconic,
+		(float3*)dL_dmean3D,
+		dL_dcov3D);
+
+	// Propagate gradients for remaining steps: finish 3D mean gradients,
+	// propagate color gradients to SH (if desireD), propagate 3D covariance
+	// matrix gradients to scale and rotation.
+	preprocessspehricalCUDA<NUM_CHANNELS> << < (P + 255) / 256, 256 >> > (
 		P, D, M,
 		(float3*)means3D,
 		radii,
