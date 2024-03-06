@@ -83,13 +83,19 @@ class _RasterizeGaussians(torch.autograd.Function):
         if raster_settings.debug:
             cpu_args = cpu_deep_copy_tuple(args) # Copy them before they can be corrupted
             try:
-                num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
+                if raster_settings.spherical:
+                    num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_spherical_gaussians(*args)
+                else:
+                    num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
             except Exception as ex:
                 torch.save(cpu_args, "snapshot_fw.dump")
                 print("\nAn error occured in forward. Please forward snapshot_fw.dump for debugging.")
                 raise ex
         else:
-            num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
+            if raster_settings.spherical:
+                num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_spherical_gaussians(*args)
+            else:
+                num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
 
         # Keep relevant tensors for backward
         ctx.raster_settings = raster_settings
@@ -126,19 +132,26 @@ class _RasterizeGaussians(torch.autograd.Function):
                 num_rendered,
                 binningBuffer,
                 imgBuffer,
+                spherical,
                 raster_settings.debug)
 
         # Compute gradients for relevant tensors by invoking backward method
         if raster_settings.debug:
             cpu_args = cpu_deep_copy_tuple(args) # Copy them before they can be corrupted
             try:
-                grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)
+                if raster_settings.spherical:
+                    grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_spherical_gaussians_backward(*args)
+                else:
+                    grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)
             except Exception as ex:
                 torch.save(cpu_args, "snapshot_bw.dump")
                 print("\nAn error occured in backward. Writing snapshot_bw.dump for debugging.\n")
                 raise ex
         else:
-             grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)
+            if raster_settings.spherical:
+                grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_spherical_gaussians_backward(*args)
+            else:
+                grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)
 
         grads = (
             grad_means3D,
@@ -166,6 +179,7 @@ class GaussianRasterizationSettings(NamedTuple):
     sh_degree : int
     campos : torch.Tensor
     prefiltered : bool
+    spherical : bool
     debug : bool
 
 class GaussianRasterizer(nn.Module):
@@ -183,6 +197,24 @@ class GaussianRasterizer(nn.Module):
                 raster_settings.projmatrix)
             
         return visible
+
+    def set_raster_viewproj(self, viewmatrix, projmatrix):
+        settings = GaussianRasterizationSettings(
+            image_height=self.raster_settings.image_height,
+            image_width=self.raster_settings.image_width,
+            tanfovx=self.raster_settings.tanfovx,
+            tanfovy=self.raster_settings.tanfovy,
+            bg=self.raster_settings.bg,
+            scale_modifier=self.raster_settings.scale_modifier,
+            viewmatrix=viewmatrix,
+            projmatrix=projmatrix,
+            sh_degree=self.raster_settings.sh_degree,
+            campos=self.raster_settings.campos,
+            prefiltered=self.raster_settings.prefiltered,
+            spherical=self.raster_settings.spherical,
+            debug=self.raster_settings.debug
+        )
+        self.raster_settings = settings
 
     def forward(self, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None):
         
