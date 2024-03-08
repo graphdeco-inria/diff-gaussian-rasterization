@@ -341,15 +341,15 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 		return;
 
 	// Transform point by projecting
-    glm::vec3 p_orig = glm::vec3(orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2]);
+	glm::vec3 p_orig(p_view.x, p_view.y, p_view.z);
 
-	glm::vec3 direction_vector = p_orig - *cam_pos;
+	glm::vec3 direction_vector = p_orig;
 	float direction_vector_length = glm::length(direction_vector);
-	float latitude = asinf(direction_vector.y);
-	float longitude = atan2f(direction_vector.z, direction_vector.x);
+	float longitude = asinf(direction_vector.y);
+	float latitude = atan2f(direction_vector.z, direction_vector.x);
 	float normalized_latitude = latitude / (M_PI / 2.0f);
 	float normalized_longitude = longitude / M_PI;
-	float3 p_proj = {normalized_longitude, normalized_latitude, direction_vector_length};
+	float3 p_proj = {normalized_longitude, normalized_latitude, direction_vector_length / 100};
 
 	// If 3D covariance matrix is precomputed, use it, otherwise compute
 	// from scaling and rotation parameters. 
@@ -385,8 +385,8 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 	float2 point_image = { ndc2Pix(p_proj.x, W), ndc2Pix(p_proj.y, H) };
 	uint2 rect_min, rect_max;
 	getRect(point_image, my_radius, rect_min, rect_max, grid);
-	if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
-		return;
+	//if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
+	//	return;
 
 	// If colors have been precomputed, use them, otherwise convert
 	// spherical harmonics coefficients to RGB color.
@@ -399,7 +399,7 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 	}
 
 	// Store some useful helper data for the next steps.
-	depths[idx] = p_view.z;
+	depths[idx] = direction_vector_length;
 	radii[idx] = my_radius;
 	points_xy_image[idx] = point_image;
 	// Inverse 2D covariance and opacity neatly pack into one float4

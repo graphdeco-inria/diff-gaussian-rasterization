@@ -174,8 +174,14 @@ __forceinline__ __device__ bool in_sphere(int idx,
 	float3 t_p_orig = transformPoint4x3(p_orig, viewmatrix);
 	float3 direction_vector = make_float3(t_p_orig.x, t_p_orig.y, t_p_orig.z);
 	float direction_vector_length = sqrt(direction_vector.x * direction_vector.x + direction_vector.y * direction_vector.y + direction_vector.z * direction_vector.z);
-	
 
+	float longitude = asinf(direction_vector.y);
+	float latitude = atan2f(direction_vector.z, direction_vector.x);
+	float normalized_latitude = latitude / (M_PI / 2.0f);
+	float normalized_longitude = longitude / M_PI;
+	p_view = {normalized_longitude, normalized_latitude, direction_vector_length};
+	
+	/*
 	if (direction_vector_length <= 0.2f)// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
 	{
 		if (prefiltered)
@@ -185,6 +191,7 @@ __forceinline__ __device__ bool in_sphere(int idx,
 		}
 		return false;
 	}
+	*/
 	return true;
 }
 
