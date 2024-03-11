@@ -167,21 +167,23 @@ __forceinline__ __device__ bool in_sphere(int idx,
 	const float* orig_points,
 	const float* viewmatrix,
 	const float* projmatrix,
+	const glm::vec3* cam_pos,
 	bool prefiltered,
 	float3& p_view)
 {
 	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
 	float3 t_p_orig = transformPoint4x3(p_orig, viewmatrix);
-	float3 direction_vector = make_float3(t_p_orig.x, t_p_orig.y, t_p_orig.z);
-	float direction_vector_length = sqrt(direction_vector.x * direction_vector.x + direction_vector.y * direction_vector.y + direction_vector.z * direction_vector.z);
 
-	float longitude = asinf(direction_vector.y);
-	float latitude = atan2f(direction_vector.z, direction_vector.x);
+	//glm::vec3 direction_vector = glm::vec3(cam_pos->x - orig_points[3 * idx], cam_pos->y - orig_points[3 * idx + 1], cam_pos->z);
+	glm::vec3 direction_vector = glm::vec3(cam_pos->x - orig_points[3 * idx], cam_pos->y - orig_points[3 * idx + 1], cam_pos->z - orig_points[3 * idx + 2]);
+
+	float direction_vector_length = glm::length(direction_vector);
+	float longitude = atan2f(direction_vector.x, direction_vector.y);
+	float latitude = asinf(direction_vector.z / direction_vector_length);
 	float normalized_latitude = latitude / (M_PI / 2.0f);
 	float normalized_longitude = longitude / M_PI;
 	p_view = {normalized_longitude, normalized_latitude, direction_vector_length};
 	
-	/*
 	if (direction_vector_length <= 0.2f)// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
 	{
 		if (prefiltered)
@@ -191,7 +193,6 @@ __forceinline__ __device__ bool in_sphere(int idx,
 		}
 		return false;
 	}
-	*/
 	return true;
 }
 

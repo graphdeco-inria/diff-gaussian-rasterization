@@ -114,13 +114,13 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 
 
 // Forward version of 2D covariance matrix computation
-__device__ float3 computesphericalCov2D(const float3& mean, const float* cov3D, const float* viewmatrix)
+__device__ float3 computesphericalCov2D(const float3& mean, const glm::vec3* cam_pos, const float* cov3D, const float* viewmatrix)
 {
 	// The following models the steps outlined by equations 29
 	// and 31 in "EWA Splatting" (Zwicker et al., 2002). 
 	// Additionally considers aspect / scaling of viewport.
 	// Transposes used to account for row-/column-major conventions.
-	float3 t = transformPoint4x3(mean, viewmatrix);
+	float3 t = {mean.x - cam_pos->x, mean.y - cam_pos->y, mean.z - cam_pos->z};
 	float focal_x = 1.0f;
 	float focal_y = 1.0f;
 
@@ -337,19 +337,10 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 
 	// Perform near culling, quit if outside.
 	float3 p_view;
-	if (!in_sphere(idx, orig_points, viewmatrix, projmatrix, prefiltered, p_view))
+	if (!in_sphere(idx, orig_points, viewmatrix, projmatrix, cam_pos, prefiltered, p_view))
 		return;
 
-	// Transform point by projecting
-	glm::vec3 p_orig(p_view.x, p_view.y, p_view.z);
-
-	glm::vec3 direction_vector = p_orig;
-	float direction_vector_length = glm::length(direction_vector);
-	float longitude = asinf(direction_vector.y);
-	float latitude = atan2f(direction_vector.z, direction_vector.x);
-	float normalized_latitude = latitude / (M_PI / 2.0f);
-	float normalized_longitude = longitude / M_PI;
-	float3 p_proj = {normalized_longitude, normalized_latitude, direction_vector_length / 100};
+	float3 p_proj = {p_view.x, p_view.y, p_view.z};
 
 	// If 3D covariance matrix is precomputed, use it, otherwise compute
 	// from scaling and rotation parameters. 
@@ -365,12 +356,13 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 	}
 
 	// Compute 2D screen-space covariance matrix
-	float3 cov = computesphericalCov2D(p_proj, cov3D, viewmatrix);
+	//float3 cov = computeCov2D(p_proj, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
+	float3 cov = computesphericalCov2D(p_proj, cam_pos, cov3D, viewmatrix);
 
 	// Invert covariance (EWA algorithm)
 	float det = (cov.x * cov.z - cov.y * cov.y);
-	if (det == 0.0f)
-		return;
+	//if (det == 0.0f)
+	//	return;
 	float det_inv = 1.f / det;
 	float3 conic = { cov.z * det_inv, -cov.y * det_inv, cov.x * det_inv };
 
@@ -397,9 +389,8 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 		rgb[idx * C + 1] = result.y;
 		rgb[idx * C + 2] = result.z;
 	}
-
 	// Store some useful helper data for the next steps.
-	depths[idx] = direction_vector_length;
+	depths[idx] = 1;
 	radii[idx] = my_radius;
 	points_xy_image[idx] = point_image;
 	// Inverse 2D covariance and opacity neatly pack into one float4
@@ -505,6 +496,7 @@ renderCUDA(
 			// Eq. (3) from 3D Gaussian splatting paper.
 			for (int ch = 0; ch < CHANNELS; ch++)
 				C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T;
+
 
 			T = test_T;
 
