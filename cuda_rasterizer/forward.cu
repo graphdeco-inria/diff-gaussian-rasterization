@@ -121,6 +121,8 @@ __device__ float4 computesphericalCov2D(const float3& mean, float3 p_proj, const
 	// Additionally considers aspect / scaling of viewport.
 	// Transposes used to account for row-/column-major conventions.
 	float3 t = transformPoint4x3(mean, viewmatrix);
+	float t_length = sqrtf(t.x * t.x + t.y * t.y + t.z * t.z);
+	float3 t_prime = { t.x, t.y, t.z };
 
 	float V_mu_length = sqrtf(t.x * t.x + t.y * t.y + t.z * t.z);
 	float3 mu_prime = { t.x / V_mu_length, t.y / V_mu_length, t.z / V_mu_length };
@@ -132,12 +134,23 @@ __device__ float4 computesphericalCov2D(const float3& mean, float3 p_proj, const
 		mu_prime.x * t.z * denom, mu_prime.y * t.z * denom, (mu_prime.x * t.x + mu_prime.y * t.y) * denom
 	);
 
-	glm::mat3 W_mat = glm::mat3(
+	float yaw = p_proj.x * M_PI;
+	float pitch = p_proj.y * (M_PI / 2.0f);
+	glm::mat3 W = glm::mat3(
 		viewmatrix[0], viewmatrix[4], viewmatrix[8],
 		viewmatrix[1], viewmatrix[5], viewmatrix[9],
 		viewmatrix[2], viewmatrix[6], viewmatrix[10]);
 
-	glm::mat3 T = J;
+	glm::mat3 R_pitch = glm::mat3(
+		cosf(pitch), 0, sinf(pitch),
+		0, 1, 0,
+		- sinf(pitch), 0, cosf(pitch));
+	glm::mat3 R_yaw = glm::mat3(
+		cosf(yaw), -sinf(yaw), 0,
+		- sinf(pitch), cosf(yaw), 0,
+		0, 0, 1);
+
+	glm::mat3 T = W * R_pitch * R_yaw * J;
 
 	glm::mat3 Vrk = glm::mat3(
 		cov3D[0], cov3D[1], cov3D[2],
@@ -357,10 +370,10 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 
 	// Compute 2D screen-space covariance matrix
 	float4 cov = computesphericalCov2D(p_orig, p_proj, cam_pos,cov3D, viewmatrix);
-	float det = (cov.x * cov.z - cov.y * cov.y);
+	// Invert covariance (EWA algorithm)
+	float det = -1.0f/cov.w;
 	if (det == 0.0f)
 		return;
-
 	float det_inv = 1.f / det;
 	float3 conic = { cov.z * det_inv, -cov.y * det_inv, cov.x * det_inv };
 
@@ -374,7 +387,10 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 	float my_radius = ceil(3.f * sqrt(max(lambda1, lambda2)));
 	float2 point_image = { ndc2Pix(p_proj.x, W), ndc2Pix(p_proj.y, H) };
 	uint2 rect_min, rect_max;
+
+	//getRectSpherical(p_proj, my_radius, W, H, rect_min, rect_max, grid);
 	getRect(point_image, my_radius, rect_min, rect_max, grid);
+
 	if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
 		return;
 

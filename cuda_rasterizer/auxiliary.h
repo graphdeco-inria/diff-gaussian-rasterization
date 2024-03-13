@@ -96,6 +96,39 @@ __forceinline__ __device__ float3 transformVec4x3Transpose(const float3& p, cons
 	return transformed;
 }
 
+__forceinline__ __device__ float2 getRectSpherical(const float3 p, int max_radius, const int W, const int H, uint2& rect_min, uint2& rect_max, dim3 grid)
+{
+	float lon = p.x * M_PI;
+	float lat = p.y * (M_PI / 2.0f);
+	
+
+	rect_min = {
+		min(grid.x, max((int)0, (int)((p.x - max_radius) / BLOCK_X))),
+		min(grid.y, max((int)0, (int)((p.y - max_radius) / BLOCK_Y)))
+	};
+	rect_max = {
+		min(grid.x, max((int)0, (int)((p.x + max_radius + BLOCK_X - 1) / BLOCK_X))),
+		min(grid.y, max((int)0, (int)((p.y + max_radius + BLOCK_Y - 1) / BLOCK_Y)))
+	};
+}
+
+
+__forceinline__ __device__ float3 point_to_equirect(
+	float3 orig_point,
+	const float* viewmatrix)
+{
+	float3 p_orig = { orig_point.x, orig_point.y, orig_point.z };
+	float3 direction_vector = transformPoint4x3(p_orig, viewmatrix);
+	float direction_vector_length = sqrtf(direction_vector.x * direction_vector.x + direction_vector.y * direction_vector.y + direction_vector.z * direction_vector.z);
+	float longitude = atan2f(direction_vector.x, direction_vector.z);
+	float latitude = atan2f(direction_vector.y , sqrtf(direction_vector.x * direction_vector.x + direction_vector.z * direction_vector.z));
+	float normalized_latitude = latitude / (M_PI / 2.0f) + 0.5;
+	float normalized_longitude = longitude / M_PI + 0.5;
+	float3 p_view = {normalized_longitude, normalized_latitude, direction_vector_length / 1000};
+	return p_view;
+}
+
+
 __forceinline__ __device__ float dnormvdz(float3 v, float3 dv)
 {
 	float sum2 = v.x * v.x + v.y * v.y + v.z * v.z;
@@ -173,15 +206,16 @@ __forceinline__ __device__ bool in_sphere(int idx,
 {
 	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
 	float3 direction_vector = transformPoint4x3(p_orig, viewmatrix);
-
 	float direction_vector_length = sqrtf(direction_vector.x * direction_vector.x + direction_vector.y * direction_vector.y + direction_vector.z * direction_vector.z);
-	float longitude = - atan2f(direction_vector.z, direction_vector.x);
-	float latitude = asinf(direction_vector.y / direction_vector_length);
+
+	float longitude = atan2f(direction_vector.x, direction_vector.z);
+	float latitude = atan2f(direction_vector.y , sqrtf(direction_vector.x * direction_vector.x + direction_vector.z * direction_vector.z));
 	float normalized_latitude = latitude / (M_PI / 2.0f);
 	float normalized_longitude = longitude / M_PI;
+
 	p_view = {normalized_longitude, normalized_latitude, direction_vector_length};
 	
-	if (direction_vector_length <= 0.2f || direction_vector_length >= 100.0)// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
+	if (p_view.z <= 0.2f || p_view.z >= 1000.0)
 	{
 		if (prefiltered)
 		{
