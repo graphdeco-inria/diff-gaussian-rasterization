@@ -171,14 +171,15 @@ __forceinline__ __device__ bool in_sphere(int idx,
 	bool prefiltered,
 	float3& p_view)
 {
-	glm::vec3 direction_vector = glm::vec3(cam_pos->x - orig_points[3 * idx], cam_pos->y - orig_points[3 * idx + 1], cam_pos->z - orig_points[3 * idx + 2]);
+	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
+	float3 direction_vector = transformPoint4x3(p_orig, viewmatrix);
 
-	float direction_vector_length = glm::length(direction_vector);
-	float longitude = atan2f(direction_vector.x, direction_vector.y);
-	float latitude = asinf(direction_vector.z / direction_vector_length);
+	float direction_vector_length = sqrtf(direction_vector.x * direction_vector.x + direction_vector.y * direction_vector.y + direction_vector.z * direction_vector.z);
+	float longitude = - atan2f(direction_vector.z, direction_vector.x);
+	float latitude = asinf(direction_vector.y / direction_vector_length);
 	float normalized_latitude = latitude / (M_PI / 2.0f);
 	float normalized_longitude = longitude / M_PI;
-	p_view = {normalized_longitude, normalized_latitude, direction_vector_length / 100};
+	p_view = {normalized_longitude, normalized_latitude, direction_vector_length};
 	
 	if (direction_vector_length <= 0.2f || direction_vector_length >= 100.0)// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
 	{
