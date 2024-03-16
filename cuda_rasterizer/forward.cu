@@ -114,46 +114,57 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 
 
 // Forward version of 2D covariance matrix computation
-__device__ float4 computesphericalCov2D(const float3& mean, const glm::vec3* cam_pos, const float* cov3D, const float* viewmatrix)
+__device__ float3 computesphericalCov2D(const float3& mean, float focal_x, float focal_y, float tan_fovx, float tan_fovy, const float* cov3D, const float* viewmatrix)
 {
-	// The following models the steps outlined by equations 29
-	// and 31 in "EWA Splatting" (Zwicker et al., 2002). 
-	// Additionally considers aspect / scaling of viewport.
-	// Transposes used to account for row-/column-major conventions.
+    // The following models the steps outlined by equations 29
+    // and 31 in "EWA Splatting" (Zwicker et al., 2002). 
+    // Additionally considers aspect / scaling of viewport.
+    // Transposes used to account for row-/column-major conventions.
     
     float3 t = transformPoint4x3(mean, viewmatrix);
-   
-	float3 V_mu = t;
-    float V_mu_length = sqrtf(t.x * t.x + t.y * t.y + t.z * t.z);
-    float3 mu_prime = {t.x / V_mu_length, t.y / V_mu_length, t.z / V_mu_length};
     
-    float denom = 1.0f / powf(t.x * mu_prime.x + t.y * mu_prime.y + t.z * mu_prime.z, 2.0f);
+    float t_length = sqrtf(t.x * t.x + t.y * t.y + t.z * t.z);
+    float3 t_unit = {t.x / t_length, t.y / t_length, t.z / t_length};
+
+    float cos_theta = t_unit.z;
+    float sin_theta = sqrtf(1.0f - cos_theta * cos_theta);
+    float cos_phi = t_unit.x / sin_theta;
+    float sin_phi = t_unit.y / sin_theta;
+
+    glm::mat3 R = glm::mat3(
+        cos_theta * cos_phi, -sin_phi, sin_theta * cos_phi,
+        cos_theta * sin_phi, cos_phi, sin_theta * sin_phi,
+        -sin_theta, 0.0f, cos_theta
+    );
+
+    float3 t_unit_focal = {0.0f, 0.0f, t_length};
+
+	focal_x = focal_x / 4; // I will modify to get this param directly.
 
 	glm::mat3 J = glm::mat3(
-		(mu_prime.y * t.y + mu_prime.z * t.z), mu_prime.y * t.x, mu_prime.z * t.x,
-		mu_prime.x * t.y, (mu_prime.x * t.x + mu_prime.z * t.z), mu_prime.z * t.y,
-		mu_prime.x * t.z, mu_prime.y * t.z, (mu_prime.x * t.x + mu_prime.y * t.y)
-	) * denom;
+		focal_x / t_unit_focal.z, 0.0f, -(focal_x * t_unit_focal.x) / (t_unit_focal.z * t_unit_focal.z),
+		0.0f, focal_x / t_unit_focal.z, -(focal_x * t_unit_focal.y) / (t_unit_focal.z * t_unit_focal.z),
+		0, 0, 0);
 
-	glm::mat3 W = glm::mat3(
-		viewmatrix[0], viewmatrix[4], viewmatrix[8],
-		viewmatrix[1], viewmatrix[5], viewmatrix[9],
-		viewmatrix[2], viewmatrix[6], viewmatrix[10]);
+    glm::mat3 W = glm::mat3(
+        viewmatrix[0], viewmatrix[4], viewmatrix[8],
+        viewmatrix[1], viewmatrix[5], viewmatrix[9],
+        viewmatrix[2], viewmatrix[6], viewmatrix[10]);
 
-	glm::mat3 T = W * J;
+    glm::mat3 T = W *  J;
 
-	glm::mat3 Vrk = glm::mat3(
-		cov3D[0], cov3D[1], cov3D[2],
-		cov3D[1], cov3D[3], cov3D[4],
-		cov3D[2], cov3D[4], cov3D[5]);
+    glm::mat3 Vrk = glm::mat3(
+        cov3D[0], cov3D[1], cov3D[2],
+        cov3D[1], cov3D[3], cov3D[4],
+        cov3D[2], cov3D[4], cov3D[5]);
 
-	glm::mat3 cov = glm::transpose(T) * glm::transpose(Vrk) * T;
+    glm::mat3 cov = glm::transpose(T) * glm::transpose(Vrk) * T;
 
-	// Apply low-pass filter: every Gaussian should be at least
-	// one pixel wide/high. Discard 3rd row and column.
-	cov[0][0] += 0.3f;
-	cov[1][1] += 0.3f;
-	return { float(cov[0][0]), float(cov[0][1]), float(cov[1][1]), denom };
+    // Apply low-pass filter: every Gaussian should be at least
+    // one pixel wide/high. Discard 3rd row and column.
+    cov[0][0] += 0.3f;
+    cov[1][1] += 0.3f;
+    return { float(cov[0][0]), float(cov[0][1]), float(cov[1][1])};
 }
 
 // Forward method for converting scale and rotation properties of each
@@ -258,7 +269,6 @@ __global__ void preprocessCUDA(int P, int D, int M,
 
 	// Compute 2D screen-space covariance matrix
 	float3 cov = computeCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
-
 	// Invert covariance (EWA algorithm)
 	float det = (cov.x * cov.z - cov.y * cov.y);
 	if (det == 0.0f)
@@ -340,9 +350,8 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 
 	// Perform near culling, quit if outside.
 	float3 p_view;
-    p_view = point_to_equirect(p_orig, viewmatrix);
-	//if (!in_sphere(idx, orig_points, viewmatrix, projmatrix, cam_pos, prefiltered, p_view))
-	//	return;
+	if (!in_sphere(idx, orig_points, viewmatrix, projmatrix, cam_pos, prefiltered, p_view))
+		return;
 
 	float3 p_proj = {p_view.x, p_view.y, p_view.z};
 
@@ -360,7 +369,8 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 	}
 
 	// Compute 2D screen-space covariance matrix
-	float4 cov = computesphericalCov2D(p_orig, cam_pos, cov3D, viewmatrix);
+	float3 cov = computesphericalCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
+
 
 	// Invert covariance (EWA algorithm)
 	float det = (cov.x * cov.z - cov.y * cov.y);
@@ -373,14 +383,15 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 	// 2D covariance matrix). Use extent to compute a bounding rectangle
 	// of screen-space tiles that this Gaussian overlaps with. Quit if
 	// rectangle covers 0 tiles. 
-	float mid = 0.5f * (cov.x + cov.y);
+	float mid = 0.5f * (cov.x + cov.z);
 	float lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
 	float lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
+
 	float my_radius = ceil(3.f * sqrt(max(lambda1, lambda2)));
+
 	float2 point_image = { ndc2Pix(p_proj.x, W), ndc2Pix(p_proj.y, H) };
 	uint2 rect_min, rect_max;
 	getRect(point_image, my_radius , rect_min, rect_max, grid);
-	//getRect(point_image, my_radius, rect_min, rect_max, grid);
     if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
         return;
 

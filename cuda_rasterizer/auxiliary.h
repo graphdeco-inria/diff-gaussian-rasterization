@@ -123,7 +123,7 @@ __forceinline__ __device__ float3 point_to_equirect(
 	float latitude = atan2f(direction_vector.y , sqrtf(direction_vector.x * direction_vector.x + direction_vector.z * direction_vector.z));
 	float normalized_latitude = latitude / (M_PI / 2.0f);
 	float normalized_longitude = longitude / M_PI;
-	float3 p_view = {normalized_longitude, normalized_latitude, direction_vector_length / 100.0f};
+	float3 p_view = {normalized_longitude, normalized_latitude, direction_vector_length};
 	return p_view;
 }
 
