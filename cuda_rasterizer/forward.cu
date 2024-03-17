@@ -164,7 +164,7 @@ __device__ float3 computesphericalCov2D(const float3& mean, float focal_x, float
     // one pixel wide/high. Discard 3rd row and column.
     cov[0][0] += 0.3f;
     cov[1][1] += 0.3f;
-    return { float(cov[0][0]), float(cov[0][1]), float(cov[1][1])};
+    return { float(cov[0][0]), float(cov[0][1]) , float(cov[1][1])};
 }
 
 // Forward method for converting scale and rotation properties of each
@@ -269,6 +269,7 @@ __global__ void preprocessCUDA(int P, int D, int M,
 
 	// Compute 2D screen-space covariance matrix
 	float3 cov = computeCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
+
 	// Invert covariance (EWA algorithm)
 	float det = (cov.x * cov.z - cov.y * cov.y);
 	if (det == 0.0f)
@@ -284,6 +285,7 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	float lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
 	float lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
 	float my_radius = ceil(3.f * sqrt(max(lambda1, lambda2)));
+
 	float2 point_image = { ndc2Pix(p_proj.x, W), ndc2Pix(p_proj.y, H) };
 	uint2 rect_min, rect_max;
 	getRect(point_image, my_radius, rect_min, rect_max, grid);
@@ -370,7 +372,7 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 
 	// Compute 2D screen-space covariance matrix
 	float3 cov = computesphericalCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
-
+	cov.x = cov.x / (cos(abs(p_proj.y * M_PI / 2)) + 0.000001)0;
 
 	// Invert covariance (EWA algorithm)
 	float det = (cov.x * cov.z - cov.y * cov.y);
