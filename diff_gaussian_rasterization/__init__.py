@@ -68,8 +68,6 @@ class _RasterizeGaussians(torch.autograd.Function):
             cov3Ds_precomp,
             raster_settings.viewmatrix,
             raster_settings.projmatrix,
-            raster_settings.tanfovx,
-            raster_settings.tanfovy,
             raster_settings.image_height,
             raster_settings.image_width,
             sh,
@@ -116,8 +114,6 @@ class _RasterizeGaussians(torch.autograd.Function):
                 cov3Ds_precomp, 
                 raster_settings.viewmatrix, 
                 raster_settings.projmatrix, 
-                raster_settings.tanfovx, 
-                raster_settings.tanfovy, 
                 grad_out_color, 
                 sh, 
                 raster_settings.sh_degree, 
@@ -157,8 +153,6 @@ class _RasterizeGaussians(torch.autograd.Function):
 class GaussianRasterizationSettings(NamedTuple):
     image_height: int
     image_width: int 
-    tanfovx : float
-    tanfovy : float
     bg : torch.Tensor
     scale_modifier : float
     viewmatrix : torch.Tensor

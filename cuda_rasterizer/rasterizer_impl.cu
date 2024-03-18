@@ -213,15 +213,11 @@ int CudaRasterizer::Rasterizer::forward(
 	const float* viewmatrix,
 	const float* projmatrix,
 	const float* cam_pos,
-	const float tan_fovx, float tan_fovy,
 	const bool prefiltered,
 	float* out_color,
 	int* radii,
 	bool debug)
 {
-	const float focal_y = height / (2.0f * tan_fovy);
-	const float focal_x = width / (2.0f * tan_fovx);
-
 	size_t chunk_size = required<GeometryState>(P);
 	char* chunkptr = geometryBuffer(chunk_size);
 	GeometryState geomState = GeometryState::fromChunk(chunkptr, P);
@@ -259,8 +255,6 @@ int CudaRasterizer::Rasterizer::forward(
 		viewmatrix, projmatrix,
 		(glm::vec3*)cam_pos,
 		width, height,
-		focal_x, focal_y,
-		tan_fovx, tan_fovy,
 		radii,
 		geomState.means2D,
 		geomState.depths,
@@ -351,7 +345,6 @@ void CudaRasterizer::Rasterizer::backward(
 	const float* viewmatrix,
 	const float* projmatrix,
 	const float* campos,
-	const float tan_fovx, float tan_fovy,
 	const int* radii,
 	char* geom_buffer,
 	char* binning_buffer,
@@ -377,8 +370,8 @@ void CudaRasterizer::Rasterizer::backward(
 		radii = geomState.internal_radii;
 	}
 
-	const float focal_y = height / (2.0f * tan_fovy);
-	const float focal_x = width / (2.0f * tan_fovx);
+	const float focal_y = 0.f;
+	const float focal_x = 0.f;
 
 	const dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
 	const dim3 block(BLOCK_X, BLOCK_Y, 1);
@@ -420,8 +413,7 @@ void CudaRasterizer::Rasterizer::backward(
 		cov3D_ptr,
 		viewmatrix,
 		projmatrix,
-		focal_x, focal_y,
-		tan_fovx, tan_fovy,
+		width, height,
 		(glm::vec3*)campos,
 		(float3*)dL_dmean2D,
 		dL_dconic,
