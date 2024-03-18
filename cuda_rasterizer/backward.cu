@@ -537,6 +537,7 @@ __global__ void preprocessspehricalCUDA(
 	const glm::vec3* scales,
 	const glm::vec4* rotations,
 	const float scale_modifier,
+	const float* view_matrix,
 	const float* proj,
 	const glm::vec3* campos,
 	const float3* dL_dmean2D,
@@ -552,18 +553,34 @@ __global__ void preprocessspehricalCUDA(
 		return;
 
 	float3 m = means[idx];
+	float4 m_hom = transformPoint4x4(m, proj);
+	float m_w = 1.0f / (m_hom.w + 0.0000001f);
 
+	float3 p_proj = point_to_equirect(m, view_matrix);
 	// Compute loss gradient w.r.t. 3D means due to gradients of 2D means
 	// from rendering procedure
+	float dL_dmean2Dx = dL_dmean2D[idx].x * (cos(abs(p_proj.y * M_PI / 2)) + 0.000001);
+	float dL_dmean2Dy = dL_dmean2D[idx].y * (cos(abs(p_proj.y * M_PI / 2)) + 0.000001);
+
+	glm::vec3 dL_dmean;
+	float mul1 = (proj[0] * m.x + proj[4] * m.y + proj[8] * m.z + proj[12]) * m_w * m_w;
+	float mul2 = (proj[1] * m.x + proj[5] * m.y + proj[9] * m.z + proj[13]) * m_w * m_w;
+	dL_dmean.x = (proj[0] * m_w - proj[3] * mul1) * dL_dmean2Dx + (proj[1] * m_w - proj[3] * mul2) * dL_dmean2Dy;
+	dL_dmean.y = (proj[4] * m_w - proj[7] * mul1) * dL_dmean2Dx + (proj[5] * m_w - proj[7] * mul2) * dL_dmean2Dy;
+	dL_dmean.z = (proj[8] * m_w - proj[11] * mul1) * dL_dmean2Dx + (proj[9] * m_w - proj[11] * mul2) * dL_dmean2Dy;
+
+	/*
+
 	glm::vec3 dL_dmean;
 
-	float denormalized_latitude = dL_dmean2D[idx].y * (M_PI / 2.0f);
-	float denormalized_longitude = dL_dmean2D[idx].x * M_PI;
+	float latitude = dL_dmean2D[idx].y * (M_PI / 2.0f);
+	float longitude = dL_dmean2D[idx].x * M_PI;
 
-	dL_dmean.y = sinf(denormalized_latitude);
-	float r = cosf(denormalized_latitude);
-	dL_dmean.x = r * cosf(denormalized_longitude);
-	dL_dmean.z = r * sinf(denormalized_longitude);
+	dL_dmean.y = sinf(latitude);
+	float r = cosf(latitude);
+	dL_dmean.x = r * cosf(longitude);
+	dL_dmean.z = r * sinf(longitude);
+	*/
 
 	// That's the second part of the mean gradient. Previous computation
 	// of cov2D and following SH conversion also affects it.
@@ -857,6 +874,7 @@ void BACKWARD::preprocessspherical(
 		(glm::vec3*)scales,
 		(glm::vec4*)rotations,
 		scale_modifier,
+		viewmatrix,
 		projmatrix,
 		campos,
 		(float3*)dL_dmean2D,

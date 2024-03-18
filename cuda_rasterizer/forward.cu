@@ -372,7 +372,9 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 
 	// Compute 2D screen-space covariance matrix
 	float3 cov = computesphericalCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
-	cov.x = cov.x / (cos(abs(p_proj.y * M_PI / 2)) + 0.000001)0;
+	cov.x = cov.x / (cos(abs(p_proj.y * M_PI / 2)) + 0.000001);
+	cov.y = cov.y / (cos(abs(p_proj.y * M_PI / 2)) + 0.000001);
+	cov.z = cov.z/ (cos(abs(p_proj.z * M_PI / 2)) + 0.000001);
 
 	// Invert covariance (EWA algorithm)
 	float det = (cov.x * cov.z - cov.y * cov.y);
