@@ -2,6 +2,11 @@
 
 Used as the rasterization engine for the paper "3D Gaussian Splatting for Real-Time Rendering of Radiance Fields". If you can make use of it in your own research, please be so kind to cite us.
 
+## Main change of this repo
+Fix some bugs in the visible  frustum function and uses judgement criterion  using conventional NDC Space Culling  . 
+## TODO List
+  - integrate Detph and Alpha rendering
+
 <section class="section" id="BibTeX">
   <div class="container is-max-desktop content">
     <h2 class="title">BibTeX</h2>
