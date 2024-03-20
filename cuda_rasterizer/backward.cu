@@ -297,16 +297,22 @@ __global__ void computesphericalCov2DCUDA(int P,
 	// intermediate forward results needed in the backward.
 	float3 mean = means[idx];
 	float3 dL_dconic = { dL_dconics[4 * idx], dL_dconics[4 * idx + 1], dL_dconics[4 * idx + 3] };
-	float3 t = transformPoint4x3(mean, view_matrix);
-	
-	glm::vec3 mu_prime = glm::vec3(t.x / t.z, t.y / t.z, 1.0f);
+    float3 t = transformPoint4x3(mean, view_matrix);
+    
+    float t_length = sqrtf(t.x * t.x + t.y * t.y + t.z * t.z);
+    float3 t_unit = {t.x / t_length, t.y / t_length, t.z / t_length};
 
-	float denom_inv = - 1.0f / (powf(t.z + t.x * mu_prime.x + t.y * mu_prime.y + t.z * mu_prime.z, 2.0f) + 0.0000001f);
+    float cos_theta = t_unit.z;
+    float sin_theta = sqrtf(1.0f - cos_theta * cos_theta);
+    float cos_phi = t_unit.x / sin_theta;
+    float sin_phi = t_unit.y / sin_theta;
+
+    float3 t_unit_focal = {0.0f, 0.0f, t_length};
+
 	glm::mat3 J = glm::mat3(
-		(mu_prime.y * t.y + mu_prime.z * t.z) * denom_inv, mu_prime.x * t.x * denom_inv, mu_prime.x * t.x * denom_inv,
-		mu_prime.x * t.y * denom_inv, (mu_prime.x * t.x + mu_prime.z * t.z) * denom_inv, mu_prime.y * t.y * denom_inv,
-		mu_prime.x * t.z * denom_inv, mu_prime.y * t.z * denom_inv, (mu_prime.x * t.x + mu_prime.y * t.y) * denom_inv
-	);
+		h_x / t_unit_focal.z, 0.0f, -(h_x * t_unit_focal.x) / (t_unit_focal.z * t_unit_focal.z),
+		0.0f, h_x / t_unit_focal.z, -(h_x * t_unit_focal.y) / (t_unit_focal.z * t_unit_focal.z),
+		0, 0, 0);
 
 	glm::mat3 W = glm::mat3(
 		view_matrix[0], view_matrix[4], view_matrix[8],
@@ -553,34 +559,19 @@ __global__ void preprocessspehricalCUDA(
 		return;
 
 	float3 m = means[idx];
+
+	// Taking care of gradients from the screenspace points
 	float4 m_hom = transformPoint4x4(m, proj);
 	float m_w = 1.0f / (m_hom.w + 0.0000001f);
 
-	float3 p_proj = point_to_equirect(m, view_matrix);
 	// Compute loss gradient w.r.t. 3D means due to gradients of 2D means
 	// from rendering procedure
-	float dL_dmean2Dx = dL_dmean2D[idx].x * (cos(abs(p_proj.y * M_PI / 2)) + 0.000001);
-	float dL_dmean2Dy = dL_dmean2D[idx].y * (cos(abs(p_proj.y * M_PI / 2)) + 0.000001);
-
 	glm::vec3 dL_dmean;
 	float mul1 = (proj[0] * m.x + proj[4] * m.y + proj[8] * m.z + proj[12]) * m_w * m_w;
 	float mul2 = (proj[1] * m.x + proj[5] * m.y + proj[9] * m.z + proj[13]) * m_w * m_w;
-	dL_dmean.x = (proj[0] * m_w - proj[3] * mul1) * dL_dmean2Dx + (proj[1] * m_w - proj[3] * mul2) * dL_dmean2Dy;
-	dL_dmean.y = (proj[4] * m_w - proj[7] * mul1) * dL_dmean2Dx + (proj[5] * m_w - proj[7] * mul2) * dL_dmean2Dy;
-	dL_dmean.z = (proj[8] * m_w - proj[11] * mul1) * dL_dmean2Dx + (proj[9] * m_w - proj[11] * mul2) * dL_dmean2Dy;
-
-	/*
-
-	glm::vec3 dL_dmean;
-
-	float latitude = dL_dmean2D[idx].y * (M_PI / 2.0f);
-	float longitude = dL_dmean2D[idx].x * M_PI;
-
-	dL_dmean.y = sinf(latitude);
-	float r = cosf(latitude);
-	dL_dmean.x = r * cosf(longitude);
-	dL_dmean.z = r * sinf(longitude);
-	*/
+	dL_dmean.x = (proj[0] * m_w - proj[3] * mul1) * dL_dmean2D[idx].x + (proj[1] * m_w - proj[3] * mul2) * dL_dmean2D[idx].y;
+	dL_dmean.y = (proj[4] * m_w - proj[7] * mul1) * dL_dmean2D[idx].x + (proj[5] * m_w - proj[7] * mul2) * dL_dmean2D[idx].y;
+	dL_dmean.z = (proj[8] * m_w - proj[11] * mul1) * dL_dmean2D[idx].x + (proj[9] * m_w - proj[11] * mul2) * dL_dmean2D[idx].y;
 
 	// That's the second part of the mean gradient. Previous computation
 	// of cov2D and following SH conversion also affects it.

@@ -362,8 +362,8 @@ int CudaRasterizer::Rasterizer::forwardspherical(
 	int* radii,
 	bool debug)
 {
-	const float focal_y = height / (2.0f * tan_fovy);
-	const float focal_x = width / (2.0f * tan_fovx);
+	const float focal_y = height / (2.0f * tan_fovy) / 2;
+	const float focal_x = width / (2.0f * tan_fovx) / 4;
 
 	size_t chunk_size = required<GeometryState>(P);
 	char* chunkptr = geometryBuffer(chunk_size);
@@ -619,8 +619,8 @@ void CudaRasterizer::Rasterizer::backwardspherical(
 		radii = geomState.internal_radii;
 	}
 
-	const float focal_y = height / (2.0f * tan_fovy);
-	const float focal_x = width / (2.0f * tan_fovx);
+	const float focal_y = height / (2.0f * tan_fovy) / 4;
+	const float focal_x = width / (2.0f * tan_fovx) / 4;
 
 	const dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
 	const dim3 block(BLOCK_X, BLOCK_Y, 1);
@@ -651,7 +651,7 @@ void CudaRasterizer::Rasterizer::backwardspherical(
 	// given to us or a scales/rot pair? If precomputed, pass that. If not,
 	// use the one we computed ourselves.
 	const float* cov3D_ptr = (cov3D_precomp != nullptr) ? cov3D_precomp : geomState.cov3D;
-	CHECK_CUDA(BACKWARD::preprocess(P, D, M,
+	CHECK_CUDA(BACKWARD::preprocessspherical(P, D, M,
 		(float3*)means3D,
 		radii,
 		shs,
