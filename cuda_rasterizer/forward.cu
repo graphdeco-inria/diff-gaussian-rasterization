@@ -124,18 +124,8 @@ __device__ float3 computesphericalCov2D(const float3& mean, float focal_x, float
     float3 t = transformPoint4x3(mean, viewmatrix);
     
     float t_length = sqrtf(t.x * t.x + t.y * t.y + t.z * t.z);
-    float3 t_unit = {t.x / t_length, t.y / t_length, t.z / t_length};
-
-    float cos_theta = t_unit.z;
-    float sin_theta = sqrtf(1.0f - cos_theta * cos_theta);
-    float cos_phi = t_unit.x / sin_theta;
-    float sin_phi = t_unit.y / sin_theta;
 
     float3 t_unit_focal = {0.0f, 0.0f, t_length};
-
-    float3 mu_prime = t_unit_focal;//{t_unit.x, t_unit.y, t_unit.z};
-
-	float denom = - 1.0f / powf(t.x * mu_prime.x + t.y * mu_prime.y + t.z * mu_prime.z, 2.0f);
 
 	glm::mat3 J = glm::mat3(
 		focal_x / t_unit_focal.z, 0.0f, -(focal_x * t_unit_focal.x) / (t_unit_focal.z * t_unit_focal.z),
@@ -370,7 +360,7 @@ __global__ void preprocesssphericalCUDA(int P, int D, int M,
 	float3 cov = computesphericalCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
 	cov.x = cov.x / (cos(abs(p_proj.y * M_PI / 2)) + 0.000001);
 	cov.y = cov.y / (cos(abs(p_proj.y * M_PI / 2)) + 0.000001);
-	cov.z = cov.z / (cos(abs(p_proj.z * M_PI / 2)) + 0.000001);
+	cov.z = cov.z / (cos(abs(p_proj.y * M_PI / 2)) + 0.000001);
 
 	// Invert covariance (EWA algorithm)
 	float det = (cov.x * cov.z - cov.y * cov.y);
