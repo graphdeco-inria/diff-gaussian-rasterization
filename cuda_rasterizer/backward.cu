@@ -302,11 +302,6 @@ __global__ void computesphericalCov2DCUDA(int P,
     float t_length = sqrtf(t.x * t.x + t.y * t.y + t.z * t.z);
     float3 t_unit = {t.x / t_length, t.y / t_length, t.z / t_length};
 
-    float cos_theta = t_unit.z;
-    float sin_theta = sqrtf(1.0f - cos_theta * cos_theta);
-    float cos_phi = t_unit.x / sin_theta;
-    float sin_phi = t_unit.y / sin_theta;
-
     float3 t_unit_focal = {0.0f, 0.0f, t_length};
 
 	glm::mat3 J = glm::mat3(
