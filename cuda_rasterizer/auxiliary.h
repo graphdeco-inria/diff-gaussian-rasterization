@@ -96,23 +96,6 @@ __forceinline__ __device__ float3 transformVec4x3Transpose(const float3& p, cons
 	return transformed;
 }
 
-__forceinline__ __device__ float2 getRectSpherical(const float3 p, int max_radius, const int W, const int H, uint2& rect_min, uint2& rect_max, dim3 grid)
-{
-	float lon = p.x * M_PI;
-	float lat = p.y * (M_PI / 2.0f);
-	
-
-	rect_min = {
-		min(grid.x, max((int)0, (int)((p.x - max_radius) / BLOCK_X))),
-		min(grid.y, max((int)0, (int)((p.y - max_radius) / BLOCK_Y)))
-	};
-	rect_max = {
-		min(grid.x, max((int)0, (int)((p.x + max_radius + BLOCK_X - 1) / BLOCK_X))),
-		min(grid.y, max((int)0, (int)((p.y + max_radius + BLOCK_Y - 1) / BLOCK_Y)))
-	};
-}
-
-
 __forceinline__ __device__ float3 point_to_equirect(
 	float3 p_orig,
 	const float* viewmatrix)

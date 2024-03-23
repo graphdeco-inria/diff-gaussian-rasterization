@@ -300,7 +300,6 @@ __global__ void computesphericalCov2DCUDA(int P,
     float3 t = transformPoint4x3(mean, view_matrix);
     
     float t_length = sqrtf(t.x * t.x + t.y * t.y + t.z * t.z);
-    float3 t_unit = {t.x / t_length, t.y / t_length, t.z / t_length};
 
     float3 t_unit_focal = {0.0f, 0.0f, t_length};
 
