@@ -530,7 +530,7 @@ renderCUDA(
 			// the background color is added if nothing left to blend
 			float bg_dot_dpixel = 0;
 			for (int i = 0; i < C; i++)
-				bg_dot_dpixel += bg_color[i] * dL_dpixel[i];
+				bg_dot_dpixel += bg_color[i + pix_id * C] * dL_dpixel[i];
 			dL_dalpha += (-T_final / (1.f - alpha)) * bg_dot_dpixel;
 
 

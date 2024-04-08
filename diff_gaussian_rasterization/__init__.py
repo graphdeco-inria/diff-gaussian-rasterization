@@ -55,10 +55,14 @@ class _RasterizeGaussians(torch.autograd.Function):
         cov3Ds_precomp,
         raster_settings,
     ):
+        # Flatten from CxHxW
+        bg = raster_settings.bg if len(raster_settings.bg.shape) == 1 else raster_settings.bg.permute(1,2,0).flatten()
+        pixel_count = raster_settings.image_height * raster_settings.image_width
+        bg = bg if len(bg) > 3 else bg.repeat(pixel_count)
 
         # Restructure arguments the way that the C++ lib expects them
         args = (
-            raster_settings.bg, 
+            bg,
             means3D,
             colors_precomp,
             opacities,
@@ -105,8 +109,13 @@ class _RasterizeGaussians(torch.autograd.Function):
         raster_settings = ctx.raster_settings
         colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer = ctx.saved_tensors
 
+        # Flatten from CxHxW
+        bg = raster_settings.bg if len(raster_settings.bg.shape) == 1 else raster_settings.bg.permute(1,2,0).flatten()
+        pixel_count = raster_settings.image_height * raster_settings.image_width
+        bg = bg if len(bg) > 3 else bg.repeat(pixel_count)
+
         # Restructure args as C++ method expects them
-        args = (raster_settings.bg,
+        args = (bg,
                 means3D, 
                 radii, 
                 colors_precomp, 
