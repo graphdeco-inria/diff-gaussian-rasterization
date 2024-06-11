@@ -16,7 +16,8 @@
 #include "stdio.h"
 
 #define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
-#define NUM_WARPS (BLOCK_SIZE/32)
+#define WARP_SIZE 32
+#define NUM_WARPS (BLOCK_SIZE/WARP_SIZE)
 
 // Spherical harmonics coefficients
 __device__ const float SH_C0 = 0.28209479177387814f;
@@ -99,7 +100,7 @@ __forceinline__ __device__ float3 transformVec4x3Transpose(const float3& p, cons
 __forceinline__ __device__ float dnormvdz(float3 v, float3 dv)
 {
 	float sum2 = v.x * v.x + v.y * v.y + v.z * v.z;
-	float invsum32 = 1.0f / sqrt(sum2 * sum2 * sum2);
+	float invsum32 = rsqrtf(sum2 * sum2 * sum2);
 	float dnormvdz = (-v.x * v.z * dv.x - v.y * v.z * dv.y + (sum2 - v.z * v.z) * dv.z) * invsum32;
 	return dnormvdz;
 }
@@ -107,7 +108,7 @@ __forceinline__ __device__ float dnormvdz(float3 v, float3 dv)
 __forceinline__ __device__ float3 dnormvdv(float3 v, float3 dv)
 {
 	float sum2 = v.x * v.x + v.y * v.y + v.z * v.z;
-	float invsum32 = 1.0f / sqrt(sum2 * sum2 * sum2);
+	float invsum32 = rsqrtf(sum2 * sum2 * sum2);
 
 	float3 dnormvdv;
 	dnormvdv.x = ((+sum2 - v.x * v.x) * dv.x - v.y * v.x * dv.y - v.z * v.x * dv.z) * invsum32;
@@ -119,7 +120,7 @@ __forceinline__ __device__ float3 dnormvdv(float3 v, float3 dv)
 __forceinline__ __device__ float4 dnormvdv(float4 v, float4 dv)
 {
 	float sum2 = v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
-	float invsum32 = 1.0f / sqrt(sum2 * sum2 * sum2);
+	float invsum32 = rsqrtf(sum2 * sum2 * sum2);
 
 	float4 vdv = { v.x * dv.x, v.y * dv.y, v.z * dv.z, v.w * dv.w };
 	float vdv_sum = vdv.x + vdv.y + vdv.z + vdv.w;

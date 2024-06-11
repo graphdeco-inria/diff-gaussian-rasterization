@@ -31,6 +31,7 @@ namespace BACKWARD
 		const float* colors,
 		const float* final_Ts,
 		const uint32_t* n_contrib,
+		const uint32_t* tiles_touched,
 		const float* dL_dpixels,
 		float3* dL_dmean2D,
 		float4* dL_dconic2D,
