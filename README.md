@@ -17,3 +17,18 @@ Used as the rasterization engine for the paper "3D Gaussian Splatting for Real-T
 }</code></pre>
   </div>
 </section>
+
+
+## Development setup
+
+In order to install this package the execution of the setup.py and an existing recent cuda installation at `CUDA_HOME` itself is necessary:
+
+
+```python
+python -m venv venv
+source venv/bin/activate
+pip install torch
+CUDA_HOME=/opt/cuda/ python setup.py develop
+```
+
+For installation only (not in editable mode), swap `develop` for `install`.
