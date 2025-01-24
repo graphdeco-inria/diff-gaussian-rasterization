@@ -64,8 +64,7 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
 
 	// RGB colors are clamped to positive values. If values are
 	// clamped, we need to keep track of this for the backward pass.
-	result = glm::vec3(sigmoid(result.x), sigmoid(result.y), sigmoid(result.z));
-	return result;
+	
 }
 
 // Forward version of 2D covariance matrix computation
