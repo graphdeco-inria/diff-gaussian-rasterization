@@ -32,9 +32,6 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 	// Use PyTorch rule for clamping: if clamping was applied,
 	// gradient becomes 0.
 	glm::vec3 dL_dRGB = dL_dcolor[idx];
-	dL_dRGB.x *= clamped[3 * idx + 0] ? 0 : 1;
-	dL_dRGB.y *= clamped[3 * idx + 1] ? 0 : 1;
-	dL_dRGB.z *= clamped[3 * idx + 2] ? 0 : 1;
 
 	glm::vec3 dRGBdx(0, 0, 0);
 	glm::vec3 dRGBdy(0, 0, 0);
