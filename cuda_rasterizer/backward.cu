@@ -22,7 +22,10 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 	// Compute intermediate values, as it is done during forward
 	glm::vec3 pos = means[idx];
 	glm::vec3 dir_orig = pos - campos;
-	glm::vec3 dir = dir_orig / glm::length(dir_orig);
+	float length_dir = glm::length(dir_orig);
+
+	// Handle potential division by zero if pos == campos
+	glm::vec3 dir = (length_dir < SAFE_EPSILON) ? glm::vec3(0.0f, 0.0f, 0.0f) : dir_orig / length_dir;
 
 	glm::vec3* sh = ((glm::vec3*)shs) + idx * max_coeffs;
 
@@ -130,7 +133,8 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 	glm::vec3 dL_ddir(glm::dot(dRGBdx, dL_dRGB), glm::dot(dRGBdy, dL_dRGB), glm::dot(dRGBdz, dL_dRGB));
 
 	// Account for normalization of direction
-	float3 dL_dmean = dnormvdv(float3{ dir_orig.x, dir_orig.y, dir_orig.z }, float3{ dL_ddir.x, dL_ddir.y, dL_ddir.z });
+	// dnormvdv handles the zero-length case internally now
+	float3 dL_dmean = dnormvdv({dir_orig.x, dir_orig.y, dir_orig.z}, {dL_ddir.x, dL_ddir.y, dL_ddir.z});
 
 	// Gradients of loss w.r.t. Gaussian means, but only the portion 
 	// that is caused because the mean affects the view-dependent color.
@@ -159,11 +163,15 @@ __global__ void computeCov2DCUDA(int P,
 	// Reading location of 3D covariance for this Gaussian
 	const float* cov3D = cov3Ds + 6 * idx;
 
+
 	// Fetch gradients, recompute 2D covariance and relevant 
 	// intermediate forward results needed in the backward.
+	
 	float3 mean = means[idx];
 	float3 dL_dconic = { dL_dconics[4 * idx], dL_dconics[4 * idx + 1], dL_dconics[4 * idx + 3] };
 	float3 t = transformPoint4x3(mean, view_matrix);
+
+	bool safe_tz = abs(t.z) >= SAFE_EPSILON;
 	
 	const float limx = 1.3f * tan_fovx;
 	const float limy = 1.3f * tan_fovy;
@@ -175,8 +183,8 @@ __global__ void computeCov2DCUDA(int P,
 	const float x_grad_mul = txtz < -limx || txtz > limx ? 0 : 1;
 	const float y_grad_mul = tytz < -limy || tytz > limy ? 0 : 1;
 
-	glm::mat3 J = glm::mat3(h_x / t.z, 0.0f, -(h_x * t.x) / (t.z * t.z),
-		0.0f, h_y / t.z, -(h_y * t.y) / (t.z * t.z),
+	glm::mat3 J = glm::mat3(safe_tz ? h_x / t.z : 0.0f, 0.0f, safe_tz ? -(h_x * t.x) / (t.z * t.z) : 0.0f,
+		0.0f, safe_tz ? h_y / t.z : 0.0f, safe_tz ? -(h_y * t.y) / (t.z * t.z) : 0.0f,
 		0, 0, 0);
 
 	glm::mat3 W = glm::mat3(
@@ -200,10 +208,12 @@ __global__ void computeCov2DCUDA(int P,
 
 	float denom = a * c - b * b;
 	float dL_da = 0, dL_db = 0, dL_dc = 0;
-	float denom2inv = 1.0f / ((denom * denom) + 0.0000001f);
 
-	if (denom2inv != 0)
+	float denom2 = denom * denom;
+	
+	if (abs(denom) > SAFE_EPSILON && safe_tz) 
 	{
+		float denom2inv = 1.0f / (denom2 + SAFE_EPSILON);
 		// Gradients of loss w.r.t. entries of 2D covariance matrix,
 		// given gradients of loss w.r.t. conic matrix (inverse covariance matrix).
 		// e.g., dL / da = dL / d_conic_a * d_conic_a / d_a
@@ -254,7 +264,7 @@ __global__ void computeCov2DCUDA(int P,
 	float dL_dJ11 = W[1][0] * dL_dT10 + W[1][1] * dL_dT11 + W[1][2] * dL_dT12;
 	float dL_dJ12 = W[2][0] * dL_dT10 + W[2][1] * dL_dT11 + W[2][2] * dL_dT12;
 
-	float tz = 1.f / t.z;
+	float tz = safe_tz ? 1.f / t.z : 0.0f; 
 	float tz2 = tz * tz;
 	float tz3 = tz2 * tz;
 
@@ -337,7 +347,8 @@ __device__ void computeCov3D(int idx, const glm::vec3 scale, float mod, const gl
 
 	// Gradients of loss w.r.t. unnormalized quaternion
 	float4* dL_drot = (float4*)(dL_drots + idx);
-	*dL_drot = float4{ dL_dq.x, dL_dq.y, dL_dq.z, dL_dq.w };//dnormvdv(float4{ rot.x, rot.y, rot.z, rot.w }, float4{ dL_dq.x, dL_dq.y, dL_dq.z, dL_dq.w });
+	float4 rot4 = {rot.x, rot.y, rot.z, rot.w};
+	*dL_drot = dnormvdv(rot4, float4{ dL_dq.x, dL_dq.y, dL_dq.z, dL_dq.w }); //NOW FIXED: dnormvdv(float4{ rot.x, rot.y, rot.z, rot.w }, float4{ dL_dq.x, dL_dq.y, dL_dq.z, dL_dq.w });
 }
 
 // Backward pass of the preprocessing steps, except

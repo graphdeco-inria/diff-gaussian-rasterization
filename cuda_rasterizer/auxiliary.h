@@ -96,9 +96,13 @@ __forceinline__ __device__ float3 transformVec4x3Transpose(const float3& p, cons
 	return transformed;
 }
 
+#define SAFE_EPSILON 1e-8f
+
 __forceinline__ __device__ float dnormvdz(float3 v, float3 dv)
 {
 	float sum2 = v.x * v.x + v.y * v.y + v.z * v.z;
+	if (sum2 < SAFE_EPSILON) // Prevent division by zero
+		return 0.0f;
 	float invsum32 = 1.0f / sqrt(sum2 * sum2 * sum2);
 	float dnormvdz = (-v.x * v.z * dv.x - v.y * v.z * dv.y + (sum2 - v.z * v.z) * dv.z) * invsum32;
 	return dnormvdz;
@@ -107,6 +111,8 @@ __forceinline__ __device__ float dnormvdz(float3 v, float3 dv)
 __forceinline__ __device__ float3 dnormvdv(float3 v, float3 dv)
 {
 	float sum2 = v.x * v.x + v.y * v.y + v.z * v.z;
+	if (sum2 < SAFE_EPSILON) // Prevent division by zero
+		return {0.0f, 0.0f, 0.0f};
 	float invsum32 = 1.0f / sqrt(sum2 * sum2 * sum2);
 
 	float3 dnormvdv;
@@ -119,6 +125,8 @@ __forceinline__ __device__ float3 dnormvdv(float3 v, float3 dv)
 __forceinline__ __device__ float4 dnormvdv(float4 v, float4 dv)
 {
 	float sum2 = v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
+	if (sum2 < SAFE_EPSILON) // Prevent division by zero
+		return {0.0f, 0.0f, 0.0f, 0.0f};
 	float invsum32 = 1.0f / sqrt(sum2 * sum2 * sum2);
 
 	float4 vdv = { v.x * dv.x, v.y * dv.y, v.z * dv.z, v.w * dv.w };

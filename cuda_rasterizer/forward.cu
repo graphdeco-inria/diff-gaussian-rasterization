@@ -24,7 +24,9 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
 	// Efficient View Synthesis" by Zhang et al. (2022)
 	glm::vec3 pos = means[idx];
 	glm::vec3 dir = pos - campos;
-	dir = dir / glm::length(dir);
+	float length_dir = glm::length(dir);
+	if (length_dir < SAFE_EPSILON) dir = glm::vec3(0.0f, 0.0f, 0.0f);
+	else dir = dir / length_dir;
 
 	glm::vec3* sh = ((glm::vec3*)shs) + idx * max_coeffs;
 	glm::vec3 result = SH_C0 * sh[0];
@@ -78,6 +80,8 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 	// Additionally considers aspect / scaling of viewport.
 	// Transposes used to account for row-/column-major conventions.
 	float3 t = transformPoint4x3(mean, viewmatrix);
+	if (abs(t.z) < SAFE_EPSILON)
+		return {0.0f, 0.0f, 0.0f};
 
 	const float limx = 1.3f * tan_fovx;
 	const float limy = 1.3f * tan_fovy;
@@ -217,7 +221,7 @@ __global__ void preprocessCUDA(int P, int D, int M,
 
 	// Invert covariance (EWA algorithm)
 	float det = (cov.x * cov.z - cov.y * cov.y);
-	if (det == 0.0f)
+	if (abs(det) < SAFE_EPSILON)
 		return;
 	float det_inv = 1.f / det;
 	float3 conic = { cov.z * det_inv, -cov.y * det_inv, cov.x * det_inv };
