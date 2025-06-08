@@ -13,12 +13,6 @@
 #include "auxiliary.h"
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
-
-// ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️
-// 新添加
-#include "statistical_constants.cuh"
-// ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️
-
 namespace cg = cooperative_groups;
 
 // Forward method for converting the input spherical harmonics
@@ -76,171 +70,47 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
 	return glm::max(result, 0.0f);
 }
 
-
-
-
-// -----------------------------------------------------------------------------
-//  Statistical linearization version (sampling) : 3D  -> 2D covariance
-// -----------------------------------------------------------------------------
-__device__ float3 computeCov2D(const float3& mean_world,
-                               float focal_x, float focal_y,
-                               float tan_fovx, float tan_fovy,
-                               const float* cov3D,      // packed Σ3D (6 floats)
-                               const float* viewmatrix) // 4×4 row-major
+// Forward version of 2D covariance matrix computation
+__device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y, float tan_fovx, float tan_fovy, const float* cov3D, const float* viewmatrix)
 {
-    //---------------- 1. 把高斯中心变到相机坐标 ----------------
-    float3 mu_cam = transformPoint4x3(mean_world, viewmatrix);
+	// The following models the steps outlined by equations 29
+	// and 31 in "EWA Splatting" (Zwicker et al., 2002). 
+	// Additionally considers aspect / scaling of viewport.
+	// Transposes used to account for row-/column-major conventions.
+	float3 t = transformPoint4x3(mean, viewmatrix);
 
-    // 视锥裁剪（与原代码一致，防止过大协方差）
-    const float limx = 1.3f * tan_fovx;
-    const float limy = 1.3f * tan_fovy;
-    float px = mu_cam.x / mu_cam.z;
-    float py = mu_cam.y / mu_cam.z;
-    px = fminf(limx, fmaxf(-limx, px));
-    py = fminf(limy, fmaxf(-limy, py));
-    mu_cam.x = px * mu_cam.z;
-    mu_cam.y = py * mu_cam.z;
+	const float limx = 1.3f * tan_fovx;
+	const float limy = 1.3f * tan_fovy;
+	const float txtz = t.x / t.z;
+	const float tytz = t.y / t.z;
+	t.x = min(limx, max(-limx, txtz)) * t.z;
+	t.y = min(limy, max(-limy, tytz)) * t.z;
 
-    //---------------- 2. Σ3D 由世界 → 相机 ----------------
-    glm::mat3 Σw(cov3D[0], cov3D[1], cov3D[2],
-                 cov3D[1], cov3D[3], cov3D[4],
-                 cov3D[2], cov3D[4], cov3D[5]);
+	glm::mat3 J = glm::mat3(
+		focal_x / t.z, 0.0f, -(focal_x * t.x) / (t.z * t.z),
+		0.0f, focal_y / t.z, -(focal_y * t.y) / (t.z * t.z),
+		0, 0, 0);
 
-    glm::mat3 W(viewmatrix[0], viewmatrix[4], viewmatrix[8],
-                viewmatrix[1], viewmatrix[5], viewmatrix[9],
-                viewmatrix[2], viewmatrix[6], viewmatrix[10]);
+	glm::mat3 W = glm::mat3(
+		viewmatrix[0], viewmatrix[4], viewmatrix[8],
+		viewmatrix[1], viewmatrix[5], viewmatrix[9],
+		viewmatrix[2], viewmatrix[6], viewmatrix[10]);
 
-    glm::mat3 Σc = W * Σw * glm::transpose(W);     // camera-space 3×3
+	glm::mat3 T = W * J;
 
-    //---------------- 3. Cholesky : Σc = L·Lᵀ ---------------
-    glm::mat3 L(0.0f);
-    L[0][0] = sqrtf(Σc[0][0] + 1e-6f);
-    L[1][0] = Σc[1][0] / L[0][0];
-    L[2][0] = Σc[2][0] / L[0][0];
-    L[1][1] = sqrtf(Σc[1][1] - L[1][0]*L[1][0] + 1e-6f);
-    L[2][1] = (Σc[2][1] - L[2][0]*L[1][0]) / L[1][1];
-    L[2][2] = sqrtf(Σc[2][2] - L[2][0]*L[2][0] - L[2][1]*L[2][1] + 1e-6f);
+	glm::mat3 Vrk = glm::mat3(
+		cov3D[0], cov3D[1], cov3D[2],
+		cov3D[1], cov3D[3], cov3D[4],
+		cov3D[2], cov3D[4], cov3D[5]);
 
-    //---------------- 4. 采样 → 投影 -------------------------
-    const int N = NUM_STD_SAMPLES;
-    double sx = 0., sy = 0., sx2 = 0., sy2 = 0., sxy = 0.;
+	glm::mat3 cov = glm::transpose(T) * glm::transpose(Vrk) * T;
 
-    #pragma unroll
-    for (int i = 0; i < N; ++i)
-    {
-        // 4.1 把常量内存里的标准样本变成 3D 高斯样本（相机坐标）
-        float s0 = BASE_SAMPLES_MAX[3*i + 0];
-        float s1 = BASE_SAMPLES_MAX[3*i + 1];
-        float s2 = BASE_SAMPLES_MAX[3*i + 2];
-
-        float3 d;          // L * s
-        d.x = L[0][0]*s0;
-        d.y = L[1][0]*s0 + L[1][1]*s1;
-        d.z = L[2][0]*s0 + L[2][1]*s1 + L[2][2]*s2;
-
-        float3 p_cam = { mu_cam.x + d.x, mu_cam.y + d.y, mu_cam.z + d.z };
-
-        // 4.2 透视除法 (非线性)
-        float ndc_x = p_cam.x / p_cam.z;
-        float ndc_y = p_cam.y / p_cam.z;
-        ndc_x = fminf(limx, fmaxf(-limx, ndc_x));
-        ndc_y = fminf(limy, fmaxf(-limy, ndc_y));
-
-        float img_x = focal_x * ndc_x;   // 转像素坐标
-        float img_y = focal_y * ndc_y;
-
-        // 累加一阶 / 二阶矩
-        sx  += img_x;
-        sy  += img_y;
-        sx2 += img_x * img_x;
-        sy2 += img_y * img_y;
-        sxy += img_x * img_y;
-    }
-
-    //---------------- 5. 样本均值 & 协方差 --------------------
-    double mx = sx  / N;
-    double my = sy  / N;
-    double vx = sx2 / N - mx*mx;
-    double vy = sy2 / N - my*my;
-    double cxy= sxy / N - mx*my;
-
-    // 与原算法保持一致，确保最小 ~1 像素宽
-    vx += 0.3;
-    vy += 0.3;
-
-    return { (float)vx, (float)cxy, (float)vy };   // σₓ², cov, σᵧ²
+	// Apply low-pass filter: every Gaussian should be at least
+	// one pixel wide/high. Discard 3rd row and column.
+	cov[0][0] += 0.3f;
+	cov[1][1] += 0.3f;
+	return { float(cov[0][0]), float(cov[0][1]), float(cov[1][1]) };
 }
-
-// -----------------------------------------------------------------------------
-//  computeMean2D_statistical : 采样统计高斯投影中心（mean）
-//  参数与 computeCov2D 完全一致，只返回 float2 (mean_x, mean_y)
-// -----------------------------------------------------------------------------
-__device__ float2 computeMean2D_statistical(const float3& mean_world,
-                                            float focal_x, float focal_y,
-                                            float tan_fovx, float tan_fovy,
-                                            const float* cov3D,          // 6 floats
-                                            const float* viewmatrix)     // 4×4 row-major
-{
-    //——— 1. 世界 → 相机 -------------------------------------------------------
-    float3 mu_cam = transformPoint4x3(mean_world, viewmatrix);
-
-    //——— 2. Σ3D 世界 → 相机 --------------------------------------------------
-    glm::mat3 Σw(cov3D[0], cov3D[1], cov3D[2],
-                 cov3D[1], cov3D[3], cov3D[4],
-                 cov3D[2], cov3D[4], cov3D[5]);
-
-    glm::mat3 W(viewmatrix[0], viewmatrix[4], viewmatrix[8],
-                viewmatrix[1], viewmatrix[5], viewmatrix[9],
-                viewmatrix[2], viewmatrix[6], viewmatrix[10]);
-    glm::mat3 Σc = W * Σw * glm::transpose(W);
-
-    //——— 3. Cholesky : Σc = L·Lᵀ --------------------------------------------
-    glm::mat3 L(0.0f);
-    L[0][0] = sqrtf(Σc[0][0] + 1e-6f);
-    L[1][0] = Σc[1][0] / L[0][0];
-    L[2][0] = Σc[2][0] / L[0][0];
-    L[1][1] = sqrtf(Σc[1][1] - L[1][0]*L[1][0] + 1e-6f);
-    L[2][1] = (Σc[2][1] - L[2][0]*L[1][0]) / L[1][1];
-    L[2][2] = sqrtf(Σc[2][2] - L[2][0]*L[2][0] - L[2][1]*L[2][1] + 1e-6f);
-
-    //——— 4. 采样 → 非线性投影 → 统计一阶矩 -----------------------------------
-    const int N = NUM_STD_SAMPLES;            // =100，见 statistical_samples.cuh
-    const float limx = 1.3f * tan_fovx;       // 与原库保持一致
-    const float limy = 1.3f * tan_fovy;
-
-    double sum_x = 0.0, sum_y = 0.0;
-
-    #pragma unroll
-    for (int si = 0; si < N; ++si)
-    {
-        float s0 = BASE_SAMPLES_MAX[3*si + 0];
-        float s1 = BASE_SAMPLES_MAX[3*si + 1];
-        float s2 = BASE_SAMPLES_MAX[3*si + 2];
-
-        float3 dev;
-        dev.x = L[0][0]*s0;
-        dev.y = L[1][0]*s0 + L[1][1]*s1;
-        dev.z = L[2][0]*s0 + L[2][1]*s1 + L[2][2]*s2;
-
-        float3 p_cam = { mu_cam.x + dev.x,
-                         mu_cam.y + dev.y,
-                         mu_cam.z + dev.z };
-
-        float ndc_x = p_cam.x / p_cam.z;
-        float ndc_y = p_cam.y / p_cam.z;
-        ndc_x = fminf(limx, fmaxf(-limx, ndc_x));
-        ndc_y = fminf(limy, fmaxf(-limy, ndc_y));
-
-        sum_x += focal_x * ndc_x;    // 投影到像素坐标
-        sum_y += focal_y * ndc_y;
-    }
-
-    return { float(sum_x / N), float(sum_y / N) };
-}
-
-
-
-
 
 // Forward method for converting scale and rotation properties of each
 // Gaussian to a 3D covariance matrix in world space. Also takes care
@@ -324,14 +194,14 @@ __global__ void preprocessCUDA(int P, int D, int M,
 		return;
 
 	// ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️
-	// 使用computeMean2D_statistical 返回{像素 x, 像素 y}，之后赋值给 points_xy_image[idx]；
-	float2 mean2D = computeMean2D_statistical(
-		/*mean_world=*/ p_orig,
-		focal_x, focal_y,
-		tan_fovx, tan_fovy,
-		cov3D,             // 同 computeCov2D 用的那个指针
-		viewmatrix         // 视图矩阵
-		);
+	// 从世界坐标取出 3D 中心
+	// Transform point by projecting
+	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
+	float4 p_hom = transformPoint4x4(p_orig, projmatrix);
+	float p_w = 1.0f / (p_hom.w + 0.0000001f);
+	//世界→裁剪空间（clip space）
+	// 取得标准化设备坐标（NDC）
+	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
 	// ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️
 
 	// If 3D covariance matrix is precomputed, use it, otherwise compute
@@ -366,7 +236,8 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	float lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
 	float my_radius = ceil(3.f * sqrt(max(lambda1, lambda2)));
 	// ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️
-	
+	// NDC→像素坐标（Pixel）
+	float2 point_image = { ndc2Pix(p_proj.x, W), ndc2Pix(p_proj.y, H) };
 	// ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️
 	uint2 rect_min, rect_max;
 	getRect(point_image, my_radius, rect_min, rect_max, grid);
@@ -387,7 +258,8 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	depths[idx] = p_view.z;
 	radii[idx] = my_radius;
 	// ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️
-	points_xy_image[idx] = mean2D;
+	// 写入屏幕空间中心点数组
+	points_xy_image[idx] = point_image;
 	// ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️
 	// Inverse 2D covariance and opacity neatly pack into one float4
 	conic_opacity[idx] = { conic.x, conic.y, conic.z, opacities[idx] };
