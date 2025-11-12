@@ -52,7 +52,7 @@ class TestGaussianRasterization(unittest.TestCase):
     )
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    out_file_path = os.path.join(current_dir, 'forward_golden.pt')
+    out_file_path = os.path.join(current_dir, 'data/forward_golden.pt')
     if not os.path.exists(out_file_path):
       if not torch.version.hip:
         print("[INFO] saving golden result with cuda.")
