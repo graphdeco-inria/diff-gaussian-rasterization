@@ -18,6 +18,13 @@
 #define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
 #define NUM_WARPS (BLOCK_SIZE/32)
 
+#if defined(USE_ROCM) || defined(__HIP_PLATFORM_AMD__)
+  #include <assert.h>
+  #define DEVICE_TRAP() assert(false)
+#else
+  __device__ __forceinline__ void DEVICE_TRAP() { __trap(); }
+#endif
+
 // Spherical harmonics coefficients
 __device__ const float SH_C0 = 0.28209479177387814f;
 __device__ const float SH_C1 = 0.4886025119029199f;
@@ -156,7 +163,7 @@ __forceinline__ __device__ bool in_frustum(int idx,
 		if (prefiltered)
 		{
 			printf("Point is filtered although prefiltered is set. This shouldn't happen!");
-			__trap();
+			DEVICE_TRAP();
 		}
 		return false;
 	}
