@@ -4,13 +4,13 @@ Used as the rasterization engine for the paper "3D Gaussian Splatting for Real-T
 
 ## Install:
 ```
-git clone https://github.com/coder-bryan-123/diff-gaussian-rasterization.git
+git clone https://github.com/graphdeco-inria/diff-gaussian-rasterization.git
 git submodule update --init --recursive
 cd diff-gaussian-rasterization
 pip insatll -e .
 
 # or
-git clone --recursive https://github.com/coder-bryan-123/diff-gaussian-rasterization.git
+git clone --recursive https://github.com/graphdeco-inria/diff-gaussian-rasterization.git
 cd diff-gaussian-rasterization
 pip insatll -e .
 ```
